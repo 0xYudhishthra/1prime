@@ -1,0 +1,15 @@
+[install]
+# Use pnpm as the package manager
+packageManager = "pnpm@8.15.0"
+
+[install.scopes]
+# Configure scopes if needed
+# "@unite-defi" = "workspace:*"
+
+[test]
+# Test configuration
+preload = ["./test/setup.ts"]
+
+[run]
+# Runtime configuration
+bun = true 
