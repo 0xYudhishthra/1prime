@@ -79,9 +79,9 @@ sequenceDiagram
     Note over User, NHC: True Hybrid: Bonded Model + HTLC Security
 
     %% Phase 1: Bond Verification & Order Submission
-    User->>User: 1. Create order with confirmedCumulativePayments
+    User->>User: 1. Generate secret + hash, create order
     User->>TC: 2. Check relayer bond > cumulativePayments + payment
-    User->>User: 3. Sign ERC-7683 order with HTLC parameters
+    User->>User: 3. Sign ERC-7683 order with secretHash (secret stays private)
 
     %% Phase 2: Immediate Payment (Across Prime Innovation)
     User->>BR: 4. Submit signed order to bonded relayer
@@ -94,7 +94,7 @@ sequenceDiagram
     User->>BR: 9. Transfer 1 ETH DIRECTLY to bonded relayer
 
     %% Phase 3: HTLC Creation (Atomic Security Layer)
-    BR->>NHC: 10. Create HTLC with secret hash (dual security)
+    BR->>NHC: 10. Create HTLC with USER'S secret hash (dual security)
     BR->>NHC: 11. Lock NEAR tokens with 24hr timeout
     NHC->>NHC: 12. Emit HTLC created event
 
@@ -107,18 +107,19 @@ sequenceDiagram
 
     %% Phase 5: User Claims (Atomic Security)
     NHC->>User: 16. Notify NEAR tokens ready to claim
-    User->>NHC: 17. Reveal secret to claim NEAR tokens
+    User->>NHC: 17. Reveal ORIGINAL secret publicly to claim NEAR
     NHC->>User: 18. Transfer NEAR tokens to user
 
-    Note over User: User receives NEAR (HTLC security preserved)
+    Note over User: User receives NEAR (secret now PUBLIC on blockchain)
 
     %% Phase 6: Capital Efficiency Realized
     NHC->>FC: 19. Emit secret revelation (proof of fulfillment)
     FC->>TC: 20. Confirm order completed via merkle proof
     TC->>TC: 21. Mark order as fulfilled in merkleRoot
+    BR->>TC: 22. Claim ETH using revealed secret from step 17
 
     Note over TC, BR: Bond IMMEDIATELY available for next order
-    TC->>BR: 22. Bond capacity freed (900x more efficient)
+    TC->>BR: 23. Bond capacity freed (900x more efficient)
 
     Note over User, NHC: Complete: Immediate payment + Atomic security + Capital efficiency
 ```
@@ -131,29 +132,71 @@ sequenceDiagram
 3. User pays relayer IMMEDIATELY (Across Prime benefit)
 4. Relayer creates HTLC on NEAR with secret hash (atomic security)
 5. User claims NEAR tokens with secret reveal
-6. Relayer claims ETH using revealed secret
+6. Relayer claims ETH using revealed secret (relayer-specific verification)
 7. Bond becomes available for next swap (capital efficiency)
 ```
 
-## Demo Script
+### Relayer Verification Security
 
+**How we ensure only the correct relayer can claim ETH:**
+
+```solidity
+// Base Chain HTLC with relayer-specific access control
+contract BaseHTLCWithRelayerVerification {
+    struct HTLCOrder {
+        bytes32 secretHash;
+        uint256 timeout;
+        address user;
+        address designatedRelayer;  // Only THIS relayer can claim
+        uint256 amount;
+        bool claimed;
+    }
+
+    function claimWithSecret(bytes32 orderHash, bytes32 secret) external {
+        HTLCOrder storage order = orders[orderHash];
+
+        // Verify secret is correct
+        require(sha256(abi.encodePacked(secret)) == order.secretHash, "Invalid secret");
+        require(block.timestamp < order.timeout, "HTLC expired");
+        require(!order.claimed, "Already claimed");
+
+        // CRITICAL: Only the designated relayer can claim
+        require(msg.sender == order.designatedRelayer, "Unauthorized relayer");
+
+        order.claimed = true;
+        payable(order.designatedRelayer).transfer(order.amount);
+    }
+
+    function createHTLCForRelayer(
+        bytes32 secretHash,
+        uint256 timeout,
+        address user,
+        address relayer  // Specific relayer who provided NEAR liquidity
+    ) external payable {
+        bytes32 orderHash = keccak256(abi.encodePacked(secretHash, timeout, user, relayer));
+        orders[orderHash] = HTLCOrder({
+            secretHash: secretHash,
+            timeout: timeout,
+            user: user,
+            designatedRelayer: relayer,  // Lock to specific relayer
+            amount: msg.value,
+            claimed: false
+        });
+    }
+}
 ```
-"I'll demonstrate a hybrid cross-chain swap combining atomic security
-with capital efficiency innovations from Across Prime research.
 
-Phase 1 - Traditional Atomic Swap Security:
-[Creates HTLC order on Base] ✅ Order created with hashlock/timelock
-[Bonded relayer provides NEAR liquidity] ✅ HTLC created on NEAR
-[User reveals secret] ✅ Atomic swap completed securely
+**Three-layer relayer verification:**
 
-Phase 2 - Capital Efficiency Innovation:
-[Same relayer immediately available] ✅ Bond reused for next swap
-[Second user creates order] ✅ No capital locked during settlement
-[Multiple swaps from same bond] ✅ 900x more efficient than escrow
+1. **Address verification**: Only `designatedRelayer` address can call claim function
+2. **Secret knowledge**: Relayer must know the secret (revealed when user claimed NEAR)
+3. **Bond tracking**: Only bonded relayers can be designated (verified during HTLC creation)
 
-This preserves ALL atomic swap security while achieving breakthrough
-capital efficiency from cutting-edge Paradigm research."
-```
+**Why this prevents unauthorized claims:**
+
+- Even if secret is public, only the specific relayer who provided NEAR liquidity can claim ETH
+- Prevents other relayers from "stealing" claims after secret revelation
+- Maintains one-to-one correspondence between NEAR provider and ETH claimer
 
 ## How Our Hybrid Model Achieves Hackathon Goals
 
@@ -190,6 +233,60 @@ class CrossChainHTLCManager {
 #### **Properly Handle Hashlock Logic**
 
 **Component**: SHA256 Hashlock Implementation + Secret Management
+
+**Secret Generation & Revelation Flow**:
+
+```typescript
+// Phase 1: User generates secret when creating swap order
+class UserSwapCreation {
+  createSwapOrder() {
+    // User generates random 32-byte secret (KEEPS PRIVATE)
+    const secret = crypto.randomBytes(32);
+    const secretHash = sha256(secret); // This gets shared publicly
+
+    // User stores secret locally and shares only the hash
+    this.userStoredSecret = secret; // Private - never shared
+
+    const swapOrder = {
+      amount: parseEther("1"),
+      secretHash: secretHash, // Public - goes into contracts
+      timeout: Date.now() + 24 * 3600,
+      user: userAddress,
+    };
+
+    return this.submitOrder(swapOrder);
+  }
+}
+
+// Phase 2: Bonded relayer creates NEAR HTLC using USER'S secret hash
+// Phase 3: User reveals original secret to claim NEAR tokens
+class UserClaimFlow {
+  async claimNEARTokens(orderHash: string) {
+    // User provides the ORIGINAL secret they generated in Phase 1
+    const originalSecret = this.userStoredSecret;
+
+    // This transaction reveals the secret publicly on NEAR blockchain
+    await nearContract.claim_with_secret({
+      order_hash: orderHash,
+      secret: originalSecret, // ← This becomes public when called!
+    });
+  }
+}
+
+// Phase 4: Relayer monitors NEAR, sees revealed secret, claims ETH
+class RelayerMonitoring {
+  async monitorForSecretReveal(orderHash: string) {
+    // Watch NEAR blockchain for claim_with_secret transactions
+    const claimTx = await this.waitForClaimTransaction(orderHash);
+    const revealedSecret = claimTx.parameters.secret;
+
+    // Use the same secret to claim ETH on Base
+    await baseContract.claimWithSecret(orderHash, revealedSecret);
+  }
+}
+```
+
+**Key Insight**: The secret must be revealed publicly to claim tokens, which enables the atomic swap!
 
 **How it works**:
 
@@ -240,11 +337,33 @@ impl NEARHTLCContract {
 }
 ```
 
+**Complete Example**:
+
+```javascript
+// Step 1: User creates swap order
+const userSecret = "0x1a2b3c4d5e6f789..."; // 32 bytes, user keeps private
+const secretHash = "0x9f4e2a1b8c7d456..."; // SHA256(userSecret), shared publicly
+
+// Step 2: Both contracts use THE SAME hash
+// Base Contract: "Whoever provides input that hashes to 0x9f4e... gets ETH"
+// NEAR Contract: "Whoever provides input that hashes to 0x9f4e... gets NEAR"
+
+// Step 3: User claims NEAR by revealing secret
+User → NEAR Contract: claim_with_secret(orderHash, "0x1a2b3c4d5e6f789...")
+NEAR Contract: SHA256("0x1a2b3c4d5e6f789...") == "0x9f4e..." ✓ → Transfer NEAR
+
+// Step 4: Secret is now public on NEAR blockchain
+// Relayer reads it and claims ETH
+Relayer → Base Contract: claimWithSecret(orderHash, "0x1a2b3c4d5e6f789...")
+Base Contract: SHA256("0x1a2b3c4d5e6f789...") == "0x9f4e..." ✓ → Transfer ETH
+```
+
 **Benefits**:
 
 - **Cross-chain compatibility** with identical SHA256 hashing
 - **Atomic security** ensuring same secret unlocks both sides
 - **Standardized interface** across different VM architectures
+- **Public revelation** enables both parties to complete their claims
 
 #### **Properly Handle Contract Expiration/Reverts**
 
@@ -346,65 +465,213 @@ const nearToBaseSwap = {
 
 #### **UI Component**
 
-**What we provide**:
+**Demo interface showing**:
 
-- **Real-time swap tracking** with live HTLC status
-- **Bond capacity dashboard** showing available relayers
-- **Cross-chain transaction history** with secret management
-- **Mobile-responsive design** with wallet integration
-
-```tsx
-// Demo UI Component
-const SwapInterface = () => (
-  <div className="swap-interface">
-    <BondCapacityIndicator relayers={availableRelayers} />
-    <SwapForm onSubmit={createHTLCOrder} />
-    <HTLCStatusTracker orderHash={currentOrder.hash} />
-    <SecretRevealModal onReveal={claimTokens} />
-  </div>
-);
-```
+- Real-time HTLC status tracking
+- Bond capacity of available relayers
+- Secret revelation and claims
+- Capital efficiency metrics
 
 #### **Enable Partial Fills**
 
 **Component**: Merkle Tree Secret Management + Proportional Bonding
 
-**How it works**:
+**Partial Fill Architecture**: Based on 1inch Fusion+ multiple fills pattern with bonded relayer enhancements
+
+**Phase 1: User Creates Multi-Secret Order**
+
+```typescript
+// User generates multiple secrets for partial fills (following 1inch pattern)
+class PartialFillOrderCreation {
+  createPartialFillOrder(totalAmount: bigint) {
+    // Generate 11 secrets for granular partial fills (1inch approach)
+    const secrets = Array.from({ length: 11 }).map(() =>
+      uint8ArrayToHex(randomBytes(32))
+    );
+
+    // Create secret hashes for each partial fill
+    const secretHashes = secrets.map(secret => sha256(secret));
+
+    // Build Merkle tree of secrets (enables efficient verification)
+    const merkleLeaves = this.buildMerkleLeaves(secrets);
+    const merkleRoot = this.calculateMerkleRoot(merkleLeaves);
+
+    // User keeps secrets private, shares only Merkle root
+    this.userStoredSecrets = secrets; // Private
+
+    const partialFillOrder = {
+      totalAmount: totalAmount, // 1000 NEAR total
+      merkleRoot: merkleRoot, // Public - goes into contracts
+      allowPartialFills: true,
+      allowMultipleFills: true,
+      filledAmount: 0n, // Track progress
+    };
+
+    return partialFillOrder;
+  }
+}
+```
+
+**Phase 2: Multiple Bonded Relayers Fill Portions**
+
+```typescript
+// Different relayers can fill different portions
+class BondedRelayerPartialFill {
+  async fillPortion(
+    order: PartialFillOrder,
+    fillAmount: bigint,
+    relayerBond: bigint
+  ) {
+    // Calculate which secret index corresponds to this fill amount
+    const secretIndex = Number(
+      (BigInt(order.secrets.length - 1) * (fillAmount - 1n)) / order.totalAmount
+    );
+
+    // Check bonded relayer has sufficient capacity
+    const requiredBond = (relayerBond * fillAmount) / order.totalAmount;
+    require(this.availableBondCapacity >= requiredBond, "Insufficient bond");
+
+    // Create proportional HTLC on NEAR
+    await this.createProportionalHTLC({
+      orderHash: order.hash,
+      fillAmount: fillAmount, // 300 NEAR (30% of 1000)
+      secretHash: order.secretHashes[secretIndex], // Specific secret for this portion
+      proportionalTimeout: order.baseTimeout,
+      relayerBond: requiredBond,
+    });
+
+    // Update bond utilization proportionally
+    this.allocatedBondCapacity += requiredBond;
+  }
+}
+```
+
+**Phase 3: Proportional Secret Revelation & Claims**
 
 ```solidity
-contract PartialFillHTLC {
-    struct PartialOrder {
-        bytes32[] secretHashes;  // Multiple secrets for partial fills
-        uint256[] amounts;       // Corresponding amounts
-        uint256 totalAmount;     // Total order size
-        uint256 filledAmount;    // Amount filled so far
+// NEAR contract handles multiple partial claims
+contract NEARPartialFillHTLC {
+    struct PartialFillOrder {
+        bytes32 merkleRoot;       // Root of secret Merkle tree
+        uint256 totalAmount;      // 1000 NEAR total
+        uint256 filledAmount;     // Amount filled so far
+        mapping(uint256 => bool) secretsUsed; // Track which secrets revealed
+        mapping(uint256 => uint256) fillAmounts; // Amount per secret index
     }
 
-    function partialFill(
+    function claimPartialFill(
         bytes32 orderHash,
         bytes32 secret,
+        uint256 secretIndex,
+        bytes32[] memory merkleProof,
         uint256 fillAmount
     ) external {
-        PartialOrder storage order = partialOrders[orderHash];
-        require(fillAmount <= order.totalAmount - order.filledAmount, "Overfill");
+        PartialFillOrder storage order = partialOrders[orderHash];
 
-        // Verify secret corresponds to fill amount
-        uint256 secretIndex = (fillAmount * order.secretHashes.length) / order.totalAmount;
-        require(sha256(abi.encodePacked(secret)) == order.secretHashes[secretIndex], "Invalid secret");
+        // Verify secret is valid for this index using Merkle proof
+        bytes32 leaf = keccak256(abi.encodePacked(secretIndex, secret));
+        require(MerkleProof.verify(merkleProof, order.merkleRoot, leaf), "Invalid proof");
 
+        // Verify secret hasn't been used (prevents double-claiming)
+        require(!order.secretsUsed[secretIndex], "Secret already used");
+
+        // Verify fill amount matches secret index
+        uint256 expectedFillAmount = (order.totalAmount * secretIndex) / 10; // 11 secrets = 0-10 index
+        require(fillAmount == expectedFillAmount, "Invalid fill amount for secret");
+
+        // Mark secret as used and transfer proportional NEAR
+        order.secretsUsed[secretIndex] = true;
         order.filledAmount += fillAmount;
-        // Transfer proportional amount...
+        order.fillAmounts[secretIndex] = fillAmount;
+
+        // Transfer proportional amount to user
+        Promise::new(order.user).transfer(fillAmount);
+
+        // Emit event with revealed secret (for relayer to claim)
+        env::log_str(&format!("Partial secret revealed: index={}, secret={}", secretIndex, secret));
     }
 }
 ```
 
-**Example**:
+**Phase 4: Bond Reuse After Partial Claims**
 
-- User wants to swap 1000 NEAR → ETH
-- Relayer A fills 300 NEAR (30% fill)
-- Relayer B fills 700 NEAR (70% fill)
-- Each uses different secrets from the Merkle tree
-- Bond capacity allocated proportionally
+```typescript
+// Bonded relayers monitor for partial secret revelations
+class PartialFillBondManagement {
+  async monitorPartialClaims(orderHash: string) {
+    // Monitor NEAR blockchain for partial claim transactions
+    const partialClaimTx = await this.waitForPartialClaim(orderHash);
+    const { secretIndex, secret, fillAmount } = partialClaimTx.parameters;
+
+    // Use revealed secret to claim proportional ETH on Base
+    await baseContract.claimPartialFill({
+      orderHash: orderHash,
+      secret: secret,
+      secretIndex: secretIndex,
+      fillAmount: fillAmount,
+    });
+
+    // CRITICAL: Free up bond capacity immediately after claim
+    const releasedBondCapacity =
+      (this.totalBond * fillAmount) / this.totalOrderAmount;
+    this.availableBondCapacity += releasedBondCapacity;
+
+    // Bond can be reused for next partial fill immediately
+    console.log(
+      `Bond freed: ${releasedBondCapacity}, Available: ${this.availableBondCapacity}`
+    );
+  }
+}
+```
+
+**Complete Partial Fill Example (Following 1inch Pattern)**:
+
+```javascript
+// Step 1: User creates 1000 NEAR → ETH swap with 11 secrets
+const secrets = ["secret0", "secret1", ..., "secret10"]; // User keeps private
+const merkleRoot = calculateMerkleRoot(secrets);         // Shared publicly
+
+// Step 2: Multiple relayers fill portions
+Relayer A (Bond: 50 ETH): Fills 300 NEAR using secret[3] (30% fill)
+Relayer B (Bond: 30 ETH): Fills 200 NEAR using secret[2] (20% fill)
+Relayer C (Bond: 70 ETH): Fills 500 NEAR using secret[5] (50% fill)
+
+// Step 3: User claims each portion by revealing specific secrets
+User → NEAR: claimPartialFill(orderHash, "secret3", 3, proof3, 300)
+User → NEAR: claimPartialFill(orderHash, "secret2", 2, proof2, 200)
+User → NEAR: claimPartialFill(orderHash, "secret5", 5, proof5, 500)
+
+// Step 4: Each relayer claims ETH using revealed secrets + bond reuse
+Relayer A: Claims ETH using "secret3" → Bond available immediately
+Relayer B: Claims ETH using "secret2" → Bond available immediately
+Relayer C: Claims ETH using "secret5" → Bond available immediately
+
+// Result: 1000 NEAR → ETH completed with 3 partial fills + immediate bond reuse
+```
+
+**Capital Efficiency Benefits**:
+
+```
+Traditional Partial Fills:
+- Relayer A: 15 ETH locked for 1 hour = 15 ETH-hours
+- Relayer B: 10 ETH locked for 1 hour = 10 ETH-hours
+- Relayer C: 25 ETH locked for 1 hour = 25 ETH-hours
+- Total: 50 ETH-hours capital efficiency
+
+Bonded + HTLC Partial Fills:
+- Relayer A: 15 ETH bond reused after 30 seconds = 0.125 ETH-hours
+- Relayer B: 10 ETH bond reused after 30 seconds = 0.083 ETH-hours
+- Relayer C: 25 ETH bond reused after 30 seconds = 0.208 ETH-hours
+- Total: 0.416 ETH-hours capital efficiency (120x improvement)
+```
+
+**Benefits**:
+
+- **Multiple relayers** can compete to fill portions of large orders
+- **Merkle tree verification** ensures only valid secrets can claim portions
+- **Proportional bonding** allocates bond capacity based on fill size
+- **Immediate bond reuse** after each partial claim (not after full order completion)
+- **Atomic security** preserved for each partial fill through HTLC
 
 #### **Relayer and Resolver Implementation**
 
@@ -448,67 +715,10 @@ class CrossChainResolver {
 }
 ```
 
-**Benefits**:
+#### **Multi-Chain Extension**
 
-- **Decentralized operation** (multiple relayers can compete)
-- **Automated coordination** (resolver handles complexity)
-- **Capital efficiency** (bonds reused across swaps)
-
-#### **Base/Arbitrum/etc. ↔ Mainnet Non-EVM**
-
-**Multi-Chain Support Architecture**:
-
-```typescript
-const chainConfigurations = {
-  // EVM Chains
-  base: {
-    chainId: 8453,
-    turnstileContract: "0x123...",
-    nativeToken: "ETH",
-    bondCurrency: "ETH",
-  },
-  arbitrum: {
-    chainId: 42161,
-    turnstileContract: "0x456...",
-    nativeToken: "ETH",
-    bondCurrency: "ETH",
-  },
-
-  // Non-EVM Chains
-  near: {
-    networkId: "mainnet",
-    htlcContract: "htlc.near",
-    nativeToken: "NEAR",
-    bondCurrency: "NEAR",
-  },
-  solana: {
-    cluster: "mainnet-beta",
-    programId: "HTLC...",
-    nativeToken: "SOL",
-    bondCurrency: "SOL",
-  },
-};
-
-class UniversalBondedResolver {
-  async initializeRoute(sourceChain: string, destChain: string): Promise<void> {
-    const sourceConfig = chainConfigurations[sourceChain];
-    const destConfig = chainConfigurations[destChain];
-
-    // Deploy route-specific bond management
-    await this.deployBondedRoute(sourceConfig, destConfig);
-
-    // Initialize cross-chain HTLC coordination
-    await this.initializeHTLCBridge(sourceChain, destChain);
-  }
-}
-```
-
-**Example Routes Supported**:
-
-- **Base ↔ NEAR**: ETH bonds, NEAR HTLCs
-- **Arbitrum ↔ NEAR**: ETH bonds, NEAR HTLCs
-- **Base ↔ Solana**: ETH bonds, SOL HTLCs
-- **NEAR ↔ Bitcoin**: NEAR bonds, Bitcoin HTLCs
+**Extensible to other chains**: Base/Arbitrum → NEAR, NEAR → Solana, etc.
+**Same pattern**: Bonded relayers + HTLC atomic security on any chain pair
 
 ## System Component Breakdown
 
@@ -534,66 +744,15 @@ contract TurnstileContract {
 
 ### 2. **NEAR HTLC Contract** (Hackathon Requirement)
 
-```rust
-pub struct NEARHTLCContract {
-    orders: LookupMap<String, HTLCOrder>,
-    active_timeouts: Vec<(u64, String)>, // (timeout, orderHash)
-}
-
-impl NEARHTLCContract {
-    pub fn create_htlc(&mut self, order: HTLCOrder) -> String {
-        // Atomic swap security with native NEAR implementation
-        let order_hash = self.generate_order_hash(&order);
-        self.orders.insert(&order_hash, &order);
-        self.active_timeouts.push((order.timeout, order_hash.clone()));
-        order_hash
-    }
-}
-```
-
-**Contribution**: Preserves atomic swap security + handles non-EVM chain requirements
+**Contribution**: Atomic swap security + non-EVM chain hashlock/timelock support
 
 ### 3. **Fulfillment Contract** (Cross-Chain Verification)
 
-```solidity
-contract FulfillmentContract {
-    bytes32 public destinationMerkleRoot;
-    mapping(bytes32 => bool) public ordersFulfilled;
-
-    function markFulfilled(bytes32 orderHash) external {
-        ordersFulfilled[orderHash] = true;
-        destinationMerkleRoot = keccak256(abi.encodePacked(destinationMerkleRoot, orderHash));
-        emit OrderFulfilled(orderHash, block.timestamp);
-    }
-}
-```
-
-**Contribution**: Enables cross-chain verification + merkle proof coordination
+**Contribution**: Cross-chain verification + merkle proof coordination
 
 ### 4. **Cross-Chain Resolver** (Coordination Engine)
 
-```typescript
-class CrossChainResolver {
-  private bondedRelayers: Map<string, BondedRelayer> = new Map();
-  private activeOrders: Map<string, HTLCOrder> = new Map();
-
-  async processOrder(order: HTLCOrder): Promise<void> {
-    // 1. Select optimal bonded relayer
-    const relayer = await this.selectRelayer(order);
-
-    // 2. Coordinate HTLC creation
-    await this.createCrossChainHTLC(order, relayer);
-
-    // 3. Monitor for completion
-    await this.monitorOrderCompletion(order);
-
-    // 4. Update bond availability
-    await this.updateBondUtilization(relayer, order.amount, "completed");
-  }
-}
-```
-
-**Contribution**: Orchestrates all components + handles complex coordination logic
+**Contribution**: Orchestrates HTLC + bonded systems + handles multi-chain coordination
 
 ## Capital Efficiency Example
 
@@ -614,26 +773,3 @@ Order 1: $5,000 → HTLC completes in 30 seconds → Bond available
 Order 2: $5,000 → Can start immediately → Bond available
 Throughput: $5,000/30sec = $14,400,000/day (120x improvement)
 ```
-
-## Definition of Done
-
-### Hackathon Requirements
-
-- HTLC hashlock/timelock functionality on NEAR
-- Bidirectional swaps demonstrated live
-- Onchain execution working end-to-end
-- Proper contract expiration/revert handling
-
-### Innovation Delivery
-
-- Bonded relayer system operational
-- Capital efficiency gains demonstrated (120x+ improvement)
-- Across Prime concepts successfully implemented
-- Multi-chain architecture supporting Base/Arbitrum ↔ NEAR
-
-### Score Improvements
-
-- Production-quality UI with real-time tracking
-- Partial fills enabled via Merkle tree secrets
-- Decentralized relayer/resolver network
-- Multiple EVM ↔ non-EVM chain support
