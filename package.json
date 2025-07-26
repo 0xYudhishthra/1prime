@@ -11,7 +11,11 @@
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
   },
-  "keywords": ["defi", "blockchain", "ethereum"],
+  "keywords": [
+    "defi",
+    "blockchain",
+    "ethereum"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
@@ -26,4 +30,4 @@
     "bun": "^1.0.0"
   },
   "packageManager": "pnpm@8.15.0"
-} 
+}
