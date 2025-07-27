@@ -4,10 +4,12 @@ pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 import "../src/TurnstileContract.sol";
 import "../src/EthereumFulfillmentContract.sol";
+import "../src/EthereumHTLC.sol";
 
 contract TurnstileContractTest is Test {
   TurnstileContract public turnstile;
   EthereumFulfillmentContract public fulfillment;
+  EthereumHTLC public ethereumHTLC;
 
   address public relayer;
   address public user;
@@ -21,9 +23,13 @@ contract TurnstileContractTest is Test {
     // Deploy contracts
     turnstile = new TurnstileContract();
     fulfillment = new EthereumFulfillmentContract(address(turnstile));
+    ethereumHTLC = new EthereumHTLC();
 
     // Setup oracle authorization
     fulfillment.authorizeOracle(oracle);
+
+    // Setup fulfillment contract authorization in turnstile
+    turnstile.authorizeFulfillmentContract(address(fulfillment));
   }
 
   function testRelayerCanDepositBond() public {
@@ -192,5 +198,143 @@ contract TurnstileContractTest is Test {
     vm.warp(block.timestamp + 60); // Another 60 seconds = 100% through
     uint256 endRate = turnstile.getCurrentAuctionRate(orderHash);
     assertEq(endRate, 0); // Should be market rate (0%)
+  }
+
+  function testEthereumHTLCCreation() public {
+    vm.deal(user, 10 ether);
+
+    bytes32 secret = keccak256("test_secret");
+    bytes32 secretHash = sha256(abi.encodePacked(secret));
+    uint256 timeout = block.timestamp + 2 hours;
+    string memory nearOrderHash = "near_order_123";
+
+    vm.startPrank(user);
+    bytes32 htlcId = ethereumHTLC.createHTLC{ value: 1 ether }(
+      secretHash,
+      timeout,
+      relayer,
+      nearOrderHash
+    );
+    vm.stopPrank();
+
+    assertTrue(htlcId != bytes32(0));
+
+    EthereumHTLC.HTLCDetails memory htlc = ethereumHTLC.getHTLC(htlcId);
+    assertEq(htlc.user, user);
+    assertEq(htlc.amount, 1 ether);
+    assertEq(htlc.secretHash, secretHash);
+    assertEq(htlc.designatedRelayer, relayer);
+    assertEq(htlc.timeout, timeout);
+    assertFalse(htlc.claimed);
+    assertFalse(htlc.refunded);
+  }
+
+  function testEthereumHTLCClaim() public {
+    // Setup HTLC
+    vm.deal(user, 10 ether);
+    bytes32 secret = keccak256("test_secret");
+    bytes32 secretHash = sha256(abi.encodePacked(secret));
+    uint256 timeout = block.timestamp + 2 hours;
+
+    vm.startPrank(user);
+    bytes32 htlcId = ethereumHTLC.createHTLC{ value: 1 ether }(
+      secretHash,
+      timeout,
+      relayer,
+      "near_order_123"
+    );
+    vm.stopPrank();
+
+    // Relayer claims with secret
+    uint256 relayerBalanceBefore = relayer.balance;
+
+    vm.startPrank(relayer);
+    ethereumHTLC.claimHTLC(htlcId, secret);
+    vm.stopPrank();
+
+    // Check claim
+    EthereumHTLC.HTLCDetails memory htlc = ethereumHTLC.getHTLC(htlcId);
+    assertTrue(htlc.claimed);
+    assertEq(relayer.balance, relayerBalanceBefore + 1 ether);
+  }
+
+  function testEthereumHTLCRefund() public {
+    // Setup HTLC
+    vm.deal(user, 10 ether);
+    bytes32 secret = keccak256("test_secret");
+    bytes32 secretHash = sha256(abi.encodePacked(secret));
+    uint256 timeout = block.timestamp + 2 hours;
+
+    vm.startPrank(user);
+    bytes32 htlcId = ethereumHTLC.createHTLC{ value: 1 ether }(
+      secretHash,
+      timeout,
+      relayer,
+      "near_order_123"
+    );
+    vm.stopPrank();
+
+    // Warp past timeout
+    vm.warp(timeout + 1);
+
+    // User refunds
+    uint256 userBalanceBefore = user.balance;
+
+    vm.startPrank(user);
+    ethereumHTLC.refundHTLC(htlcId);
+    vm.stopPrank();
+
+    // Check refund
+    EthereumHTLC.HTLCDetails memory htlc = ethereumHTLC.getHTLC(htlcId);
+    assertTrue(htlc.refunded);
+    assertEq(user.balance, userBalanceBefore + 1 ether);
+  }
+
+  function testCannotClaimWithWrongSecret() public {
+    // Setup HTLC
+    vm.deal(user, 10 ether);
+    bytes32 secret = keccak256("test_secret");
+    bytes32 wrongSecret = keccak256("wrong_secret");
+    bytes32 secretHash = sha256(abi.encodePacked(secret));
+    uint256 timeout = block.timestamp + 2 hours;
+
+    vm.startPrank(user);
+    bytes32 htlcId = ethereumHTLC.createHTLC{ value: 1 ether }(
+      secretHash,
+      timeout,
+      relayer,
+      "near_order_123"
+    );
+    vm.stopPrank();
+
+    // Try to claim with wrong secret
+    vm.startPrank(relayer);
+    vm.expectRevert("Invalid secret");
+    ethereumHTLC.claimHTLC(htlcId, wrongSecret);
+    vm.stopPrank();
+  }
+
+  function testCannotClaimUnauthorizedRelayer() public {
+    // Setup HTLC
+    vm.deal(user, 10 ether);
+    bytes32 secret = keccak256("test_secret");
+    bytes32 secretHash = sha256(abi.encodePacked(secret));
+    uint256 timeout = block.timestamp + 2 hours;
+    address wrongRelayer = makeAddr("wrongRelayer");
+
+    vm.startPrank(user);
+    bytes32 htlcId = ethereumHTLC.createHTLC{ value: 1 ether }(
+      secretHash,
+      timeout,
+      relayer,
+      "near_order_123"
+    );
+    vm.stopPrank();
+
+    // Try to claim with wrong relayer
+    vm.startPrank(wrongRelayer);
+    vm.expectRevert("Unauthorized relayer");
+    ethereumHTLC.claimHTLC(htlcId, secret);
+    vm.stopPrank();
   }
 }
