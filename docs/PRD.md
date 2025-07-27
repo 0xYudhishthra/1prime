@@ -688,21 +688,36 @@ Bonded + HTLC Partial Fills:
    - Add DutchAuction struct and auction management functions
    - Implement bond tier system (100 ETH, 50 ETH, 25 ETH, 10 ETH)
    - Handle linear rate improvement over 120 seconds
+   - Add bond locking and slashing mechanisms
 
 2. **Cross-Chain Resolver Integration**
    - Monitor auction progress and completion
    - Execute immediate bonded payment after auction ends
-   - Coordinate HTLC creation with winning relayer
+   - Coordinate HTLC creation with mandatory 5-minute deadline
+   - Trigger automatic slashing for non-performance
 
-3. **Order Structure Updates**
+3. **Cryptoeconomic Security Integration**
+   - Lock 200% collateral when relayer wins auction
+   - Prevent bond withdrawals during active orders
+   - Implement 7-day challenge period for withdrawals
+   - Automatic compensation from slashed bonds
+
+4. **Order Structure Updates**
    - Include auction parameters: initialRateBump, auctionDuration, priceOracle
-   - Define bond tier requirements for different relayer sizes
+   - Define bond tier requirements with slashing conditions
 
-**Integration Flow:**
+**Security-Enhanced Integration Flow:**
 
 ```
-Dutch Auction (2min) → Immediate Bonded Payment → HTLC Creation → Bond Reuse
+Dutch Auction (2min) → Bond Locking (200% collateral) → Immediate Payment → HTLC Creation (5min deadline) → Bond Release/Slash
 ```
+
+**Key Security Properties:**
+
+- Relayers CANNOT withdraw bonds during active transactions
+- Automatic slashing compensates users for relayer failures
+- Economic incentives strongly favor honest behavior
+- 182% annual ROI for honest relayers vs total loss for cheaters
 
 #### **Relayer and Resolver Implementation**
 
@@ -745,6 +760,147 @@ class CrossChainResolver {
   }
 }
 ```
+
+#### Cryptoeconomic Security Model
+
+### Bond Management and Honest Behavior Incentives
+
+**The Challenge**: What prevents relayers from withdrawing bonds mid-transaction or acting dishonestly?
+
+**The Solution**: Multi-layer cryptoeconomic security with bond locking, slashing, and challenge periods.
+
+```solidity
+contract BondedRelayerSecurity {
+    struct RelayerBond {
+        uint256 totalBond;              // Total bonded amount
+        uint256 activeBond;             // Currently locked in active orders
+        uint256 withdrawalRequest;       // Pending withdrawal amount
+        uint256 withdrawalDeadline;     // When withdrawal becomes available
+        bool challengePeriodActive;     // Whether bond can be challenged
+        mapping(bytes32 => uint256) lockedPerOrder; // Per-order locks
+    }
+
+    mapping(address => RelayerBond) public relayerBonds;
+
+    // CRITICAL: Bond locking during active transactions
+    function lockBondForOrder(address relayer, bytes32 orderHash, uint256 amount) external {
+        RelayerBond storage bond = relayerBonds[relayer];
+        require(bond.totalBond - bond.activeBond >= amount * 2, "Insufficient free bond");
+
+        bond.activeBond += amount * 2; // Lock 2x order value as collateral
+        bond.lockedPerOrder[orderHash] = amount * 2;
+        bond.challengePeriodActive = true;
+    }
+
+    // Bond withdrawal with mandatory challenge period
+    function requestBondWithdrawal(uint256 amount) external {
+        RelayerBond storage bond = relayerBonds[msg.sender];
+        require(bond.activeBond == 0, "Cannot withdraw with active orders");
+
+        bond.withdrawalRequest = amount;
+        bond.withdrawalDeadline = block.timestamp + 7 days; // 7-day challenge period
+    }
+
+    // Slashing for misbehavior
+    function slashRelayer(address relayer, bytes32 orderHash, bytes32[] calldata proof) external {
+        RelayerBond storage bond = relayerBonds[relayer];
+        require(verifyMisbehaviorProof(relayer, orderHash, proof), "Invalid proof");
+
+        uint256 slashAmount = bond.lockedPerOrder[orderHash];
+        bond.totalBond -= slashAmount;
+
+        // Compensate affected user from slashed bond
+        payable(getOrderUser(orderHash)).transfer(slashAmount);
+    }
+}
+```
+
+### Security Mechanisms Against Dishonest Behavior
+
+**1. Bond Locking (Prevents Mid-Transaction Withdrawal)**
+
+```typescript
+// When relayer wins Dutch auction, bond is immediately locked
+async function processAuctionWin(
+  relayer: address,
+  orderHash: bytes32,
+  orderValue: bigint
+) {
+  // Lock 200% of order value from relayer's bond
+  await bondContract.lockBondForOrder(relayer, orderHash, orderValue);
+
+  // Relayer CANNOT withdraw any bonds while order is active
+  // Attempting withdrawal will fail: "Cannot withdraw with active orders"
+
+  // Bond remains locked until:
+  // 1. HTLC completes successfully (bond released), OR
+  // 2. Relayer fails to create HTLC (bond slashed)
+}
+```
+
+**2. Mandatory HTLC Creation Deadline**
+
+```typescript
+// Relayer has 5 minutes to create HTLC after winning auction
+setTimeout(
+  () => {
+    if (!htlcCreated) {
+      // Automatic slashing for failure to perform
+      bondContract.slashRelayer(relayer, orderHash, timeoutProof);
+
+      // User gets compensated from slashed bond
+      // New auction can start immediately
+    }
+  },
+  5 * 60 * 1000
+); // 5 minute deadline
+```
+
+**3. Economic Incentive Alignment**
+
+```
+Honest Relayer Daily Profit:
+- Bond: 100 ETH ($320,000)
+- Daily volume: 200 ETH ($640,000)
+- Spread: 0.25%
+- Daily revenue: $1,600
+- Annual ROI: 182%
+
+Dishonest Relayer:
+- Steal one order: $3,200 (lose entire $320,000 bond)
+- Net loss: -$316,800
+- Result: Massive economic disincentive to cheat
+```
+
+### Failure Scenarios and Protections
+
+**Scenario 1: Relayer tries to withdraw bond mid-transaction**
+
+```
+User pays relayer $3,200 immediately (Across Prime benefit)
+Relayer's bond ($6,400) is locked by smart contract
+Relayer calls withdrawBond() → Transaction fails: "Cannot withdraw with active orders"
+If relayer disappears, bond is slashed → User gets $6,400 compensation
+```
+
+**Scenario 2: Relayer wins auction but doesn't create HTLC**
+
+```
+5-minute deadline enforced by resolver
+If no HTLC created → Automatic slashing triggered
+User compensated from slashed bond ($6,400)
+New auction started immediately with remaining relayers
+```
+
+**Scenario 3: Relayer creates HTLC but user doesn't claim**
+
+```
+Standard HTLC timeout (24 hours)
+Relayer can reclaim NEAR tokens after timeout
+Bond unlocked, no slashing (user's responsibility)
+```
+
+**Key Insight**: The system is designed so relayers lose MORE money by cheating than they could ever gain from a single fraudulent transaction.
 
 #### Dutch Auction Implementation
 
@@ -933,17 +1089,17 @@ contract TurnstileContract {
 
 **Contribution**: Enables immediate payment + bond tracking + contention prevention
 
-### 2. **NEAR HTLC Contract** (Hackathon Requirement)
+### 2. NEAR HTLC Contract (Hackathon Requirement)
 
-**Contribution**: Atomic swap security + non-EVM chain hashlock/timelock support
+Contribution: Atomic swap security + non-EVM chain hashlock/timelock support
 
-### 3. **Fulfillment Contract** (Cross-Chain Verification)
+### 3. Fulfillment Contract (Cross-Chain Verification)
 
-**Contribution**: Cross-chain verification + merkle proof coordination
+Contribution: Cross-chain verification + merkle proof coordination
 
-### 4. **Cross-Chain Resolver** (Coordination Engine)
+### 4. Cross-Chain Resolver (Coordination Engine)
 
-**Contribution**: Orchestrates HTLC + bonded systems + handles multi-chain coordination
+Contribution: Orchestrates HTLC + bonded systems + handles multi-chain coordination
 
 ## Capital Efficiency Example
 
@@ -964,3 +1120,321 @@ Order 1: $5,000 → 2min auction + immediate payment + 30sec HTLC → Bond avail
 Order 2: $5,000 → Can start new auction immediately
 Throughput: $5,000/2.5min = $2,880,000/day (15x improvement)
 ```
+
+## Contract Architecture by Chain
+
+### Ethereum Chain Contracts
+
+#### 1. TurnstileContract.sol (Core Bonded Relayer Management)
+
+```solidity
+contract TurnstileContract {
+    // Bond management
+    mapping(address => RelayerBond) public relayerBonds;
+    uint256 public cumulativePayments;
+    bytes32 public merkleRoot;
+
+    // Dutch auction functionality
+    mapping(bytes32 => DutchAuction) public auctions;
+
+    // Security functions
+    function lockBondForOrder(address relayer, bytes32 orderHash, uint256 amount) external;
+    function slashRelayer(address relayer, bytes32 orderHash, bytes32[] calldata proof) external;
+    function requestBondWithdrawal(uint256 amount) external;
+
+    // Auction functions
+    function startDutchAuction(bytes32 orderHash, uint256 initialRateBump, uint256 duration) external;
+    function submitAuctionBid(bytes32 orderHash) external returns (bool);
+    function getCurrentAuctionRate(bytes32 orderHash) public view returns (uint256);
+}
+```
+
+**Purpose**: Manages bonded relayers, Dutch auctions, immediate payments, and slashing
+
+#### 2. EthereumHTLC.sol (HTLC for ETH → NEAR swaps)
+
+```solidity
+contract EthereumHTLC {
+    struct HTLCDetails {
+        bytes32 secretHash;          // User's secret hash
+        uint256 amount;              // ETH amount locked
+        uint256 timeout;             // Expiration timestamp
+        address user;                // User who created HTLC
+        address designatedRelayer;   // Only this relayer can claim
+        bool claimed;                // Whether funds were claimed
+        bool refunded;               // Whether funds were refunded
+    }
+
+    mapping(bytes32 => HTLCDetails) public htlcs;
+
+    // For NEAR → ETH swaps (user locks ETH, waits for NEAR HTLC)
+    function createHTLC(
+        bytes32 secretHash,
+        uint256 timeout,
+        address designatedRelayer
+    ) external payable returns (bytes32 htlcId);
+
+    // Relayer claims ETH using secret revealed on NEAR
+    function claimHTLC(bytes32 htlcId, bytes32 secret) external;
+
+    // User refund after timeout
+    function refundHTLC(bytes32 htlcId) external;
+}
+```
+
+**Purpose**: Handles ETH locking for NEAR → ETH swaps
+
+#### 3. EthereumFulfillmentContract.sol (ETH-side Fulfillment Tracking)
+
+```solidity
+contract EthereumFulfillmentContract {
+    bytes32 public merkleRoot;
+    mapping(bytes32 => bool) public completedOrders;
+    mapping(bytes32 => bytes32) public revealedSecrets; // orderHash => secret
+
+    // For NEAR → ETH swaps: Mark when ETH is claimed on Ethereum
+    function markETHClaimed(bytes32 orderHash, bytes32 secret) external {
+        completedOrders[orderHash] = true;
+        revealedSecrets[orderHash] = secret;
+        emit OrderFulfilledOnETH(orderHash, secret);
+    }
+
+    // For ETH → NEAR swaps: Verify NEAR-side fulfillment using secret
+    function verifyNEARFulfillment(bytes32 orderHash, bytes32 secret) external {
+        // Verify secret matches the original hash
+        require(verifySecretHash(orderHash, secret), "Invalid secret");
+        completedOrders[orderHash] = true;
+        emit OrderVerifiedFromNEAR(orderHash, secret);
+    }
+
+    // Update merkle root for batch verification
+    function updateMerkleRoot(bytes32 newRoot) external;
+
+    // Release relayer bonds after fulfillment
+    function releaseBond(address relayer, bytes32 orderHash) external;
+}
+```
+
+**Purpose**: Tracks ETH-side completion for NEAR → ETH swaps, verifies NEAR-side completion for ETH → NEAR swaps
+
+### NEAR Chain Contracts
+
+#### 1. near_htlc_contract.rs (Core HTLC for NEAR)
+
+```rust
+use near_sdk::{near_bindgen, AccountId, Balance, Promise, env, log};
+use near_sdk::collections::LookupMap;
+use near_sdk::json_types::U128;
+
+#[near_bindgen]
+#[derive(Default)]
+pub struct NEARHTLCContract {
+    htlcs: LookupMap<String, HTLCDetails>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct HTLCDetails {
+    secret_hash: String,           // SHA256 hash of secret
+    amount: U128,                  // NEAR amount locked
+    timeout: u64,                  // Block timestamp expiration
+    user: AccountId,               // User who will claim NEAR
+    relayer: AccountId,            // Relayer who locked NEAR
+    claimed: bool,                 // Whether NEAR was claimed
+    refunded: bool,                // Whether NEAR was refunded
+}
+
+#[near_bindgen]
+impl NEARHTLCContract {
+    // For ETH → NEAR swaps (relayer locks NEAR, user claims with secret)
+    #[payable]
+    pub fn create_htlc(
+        &mut self,
+        secret_hash: String,
+        timeout: u64,
+        user: AccountId
+    ) -> String {
+        let htlc_id = env::sha256(
+            format!("{}:{}:{}", env::predecessor_account_id(), secret_hash, env::block_timestamp()).as_bytes()
+        );
+
+        let htlc = HTLCDetails {
+            secret_hash,
+            amount: U128(env::attached_deposit()),
+            timeout,
+            user,
+            relayer: env::predecessor_account_id(),
+            claimed: false,
+            refunded: false,
+        };
+
+        self.htlcs.insert(&hex::encode(htlc_id), &htlc);
+        hex::encode(htlc_id)
+    }
+
+    // User claims NEAR by revealing secret
+    pub fn claim_htlc(&mut self, htlc_id: String, secret: String) -> Promise {
+        let mut htlc = self.htlcs.get(&htlc_id).expect("HTLC not found");
+
+        // Verify secret matches hash
+        let secret_hash = hex::encode(env::sha256(secret.as_bytes()));
+        assert_eq!(htlc.secret_hash, secret_hash, "Invalid secret");
+
+        // Verify claimer is designated user
+        assert_eq!(env::predecessor_account_id(), htlc.user, "Only designated user can claim");
+
+        // Check not expired
+        assert!(env::block_timestamp() < htlc.timeout, "HTLC expired");
+
+        htlc.claimed = true;
+        self.htlcs.insert(&htlc_id, &htlc);
+
+        // Transfer NEAR to user
+        Promise::new(htlc.user).transfer(htlc.amount.0)
+    }
+
+    // Relayer refund after timeout
+    pub fn refund_htlc(&mut self, htlc_id: String) -> Promise {
+        let mut htlc = self.htlcs.get(&htlc_id).expect("HTLC not found");
+
+        // Check timeout passed
+        assert!(env::block_timestamp() >= htlc.timeout, "HTLC not expired yet");
+
+        // Verify refunder is original relayer
+        assert_eq!(env::predecessor_account_id(), htlc.relayer, "Only relayer can refund");
+
+        htlc.refunded = true;
+        self.htlcs.insert(&htlc_id, &htlc);
+
+        // Refund NEAR to relayer
+        Promise::new(htlc.relayer).transfer(htlc.amount.0)
+    }
+}
+```
+
+**Purpose**: Handles NEAR token locking/unlocking with hashlock/timelock functionality
+
+#### 2. near_fulfillment_contract.rs (NEAR-side Fulfillment Tracking)
+
+```rust
+use near_sdk::{near_bindgen, AccountId, env, log};
+use near_sdk::collections::LookupMap;
+use near_sdk::serde::{Deserialize, Serialize};
+
+#[near_bindgen]
+#[derive(Default)]
+pub struct NEARFulfillmentContract {
+    completed_orders: LookupMap<String, FulfillmentProof>,
+    revealed_secrets: LookupMap<String, String>, // orderHash => secret
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FulfillmentProof {
+    order_hash: String,
+    secret_revealed: String,
+    ethereum_tx_hash: String,
+    fulfillment_timestamp: u64,
+    fulfilled_on_chain: String, // "NEAR" or "ETH"
+}
+
+#[near_bindgen]
+impl NEARFulfillmentContract {
+    // For ETH → NEAR swaps: Mark when NEAR is claimed on NEAR chain
+    pub fn mark_near_claimed(&mut self, order_hash: String, secret: String) {
+        let proof = FulfillmentProof {
+            order_hash: order_hash.clone(),
+            secret_revealed: secret.clone(),
+            ethereum_tx_hash: String::new(), // Not relevant for NEAR claims
+            fulfillment_timestamp: env::block_timestamp(),
+            fulfilled_on_chain: "NEAR".to_string(),
+        };
+
+        self.completed_orders.insert(&order_hash, &proof);
+        self.revealed_secrets.insert(&order_hash, &secret);
+
+        // Emit event for Ethereum to listen and verify
+        log!("ORDER_FULFILLED_ON_NEAR: {} {}", order_hash, secret);
+    }
+
+    // For NEAR → ETH swaps: Verify ETH-side fulfillment using reported secret
+    pub fn verify_eth_fulfillment(&mut self, order_hash: String, secret: String, eth_tx_hash: String) {
+        // This would be called by a cross-chain oracle/relayer
+        let proof = FulfillmentProof {
+            order_hash: order_hash.clone(),
+            secret_revealed: secret.clone(),
+            ethereum_tx_hash: eth_tx_hash,
+            fulfillment_timestamp: env::block_timestamp(),
+            fulfilled_on_chain: "ETH".to_string(),
+        };
+
+        self.completed_orders.insert(&order_hash, &proof);
+
+        log!("ORDER_VERIFIED_FROM_ETH: {} {}", order_hash, secret);
+    }
+
+    // Check if order is fulfilled
+    pub fn is_order_fulfilled(&self, order_hash: String) -> bool {
+        self.completed_orders.contains_key(&order_hash)
+    }
+
+    // Get revealed secret for an order
+    pub fn get_revealed_secret(&self, order_hash: String) -> Option<String> {
+        self.revealed_secrets.get(&order_hash)
+    }
+}
+```
+
+**Purpose**: Tracks NEAR-side completion for ETH → NEAR swaps, verifies ETH-side completion for NEAR → ETH swaps
+
+## Bidirectional Swap Flow Summary
+
+### ETH → NEAR Swap
+
+**Ethereum contracts used**: `TurnstileContract` + `EthereumFulfillmentContract`
+**NEAR contracts used**: `NEARHTLCContract` + `NEARFulfillmentContract`
+
+**Flow**:
+
+1. User creates order on `TurnstileContract` (Dutch auction)
+2. Winning relayer gets immediate ETH payment
+3. Relayer creates HTLC on `NEARHTLCContract` (locks NEAR)
+4. User reveals secret on NEAR to claim NEAR tokens
+5. `NEARFulfillmentContract.mark_near_claimed()` records completion
+6. `EthereumFulfillmentContract.verifyNEARFulfillment()` verifies via secret
+7. Relayer bond released on Ethereum
+
+### NEAR → ETH Swap
+
+**NEAR contracts used**: `NEARHTLCContract` + `NEARFulfillmentContract`
+**Ethereum contracts used**: `TurnstileContract` + `EthereumHTLC` + `EthereumFulfillmentContract`
+
+**Flow**:
+
+1. User creates NEAR → ETH order (auction on Ethereum)
+2. Winning relayer gets immediate NEAR payment (via bonded model)
+3. User creates HTLC on `EthereumHTLC` (locks ETH as collateral)
+4. Relayer reveals secret on Ethereum to claim ETH
+5. `EthereumFulfillmentContract.markETHClaimed()` records completion
+6. `NEARFulfillmentContract.verify_eth_fulfillment()` verifies completion
+7. User keeps immediate NEAR payment from step 2
+
+**Key Insight**: Fulfillment contracts on **both chains** handle direction-specific completion tracking and cross-chain verification
+
+## Contract Deployment Requirements
+
+### Ethereum Mainnet/Base
+
+- `TurnstileContract.sol` (bonded relayer management + Dutch auction)
+- `EthereumHTLC.sol` (HTLC for NEAR → ETH swaps)
+- `EthereumFulfillmentContract.sol` (fulfillment tracking)
+
+### NEAR Mainnet/Testnet
+
+- `near_htlc_contract.rs` (HTLC for ETH → NEAR swaps)
+- `near_fulfillment_contract.rs` (fulfillment tracking)
+
+**Total**: 3 Solidity contracts + 2 Rust contracts for full bidirectional functionality
+
+**Direction-Based Fulfillment Architecture**:
+
+- **ETH → NEAR**: Fulfillment recorded on NEAR, verified on Ethereum
+- **NEAR → ETH**: Fulfillment recorded on Ethereum, verified on NEAR
