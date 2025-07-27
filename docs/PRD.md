@@ -78,20 +78,26 @@ sequenceDiagram
 
     Note over User, NHC: True Hybrid: Bonded Model + HTLC Security
 
-    %% Phase 1: Bond Verification & Order Submission
-    User->>User: 1. Generate secret + hash, create order
-    User->>TC: 2. Check relayer bond > cumulativePayments + payment
-    User->>User: 3. Sign ERC-7683 order with secretHash (secret stays private)
+    %% Phase 1: Dutch Auction Setup & Bond Verification
+    User->>User: 1. Generate secret + hash, create auction order
+    User->>User: 2. Set auction: initialRateBump=1%, duration=120s
+    User->>TC: 3. Start Dutch auction with bonded relayer tiers
 
-    %% Phase 2: Immediate Payment (Across Prime Innovation)
-    User->>BR: 4. Submit signed order to bonded relayer
-    BR->>TC: 5. Submit order to turnstile contract
-    TC->>TC: 6. Verify: securityDeposit > cumulativePayments + 1 ETH
-    TC->>TC: 7. Update: cumulativePayments += 1 ETH
+    %% Phase 2: Dutch Auction Price Discovery (Fusion+ Standard)
+    Note over TC, BR: t=0s: Auction starts 1% worse than market rate
+    TC->>TC: 4. Auction rate improves linearly over 120 seconds
+    Note over TC, BR: t=30s: 0.75% worse, more relayers become eligible
+    Note over TC, BR: t=60s: 0.5% worse, medium-bond relayers can bid
+    Note over TC, BR: t=90s: 0.25% worse, small-bond relayers can bid
+    BR->>TC: 5. First qualified bonded relayer submits winning bid
+    TC->>TC: 6. Auction settles, verify winner's bond capacity
+
+    %% Phase 3: Immediate Payment (Across Prime + Market Rate)
+    TC->>TC: 7. Update: cumulativePayments += market rate + spread
     TC->>TC: 8. Update: merkleRoot = hash(oldRoot, order)
 
-    Note over TC, BR: Across Prime: User pays relayer IMMEDIATELY
-    User->>BR: 9. Transfer 1 ETH DIRECTLY to bonded relayer
+    Note over TC, BR: Across Prime: User pays selected relayer at MARKET RATE + SPREAD
+    User->>BR: 9. Transfer amount DIRECTLY to selected relayer
 
     %% Phase 3: HTLC Creation (Atomic Security Layer)
     BR->>NHC: 10. Create HTLC with USER'S secret hash (dual security)
@@ -127,13 +133,14 @@ sequenceDiagram
 ### Enhanced User Flow
 
 ```
-1. User creates order: "1 ETH → NEAR tokens" on Base
-2. User selects bonded relayer (checks bond capacity)
-3. User pays relayer IMMEDIATELY (Across Prime benefit)
-4. Relayer creates HTLC on NEAR with secret hash (atomic security)
-5. User claims NEAR tokens with secret reveal
-6. Relayer claims ETH using revealed secret (relayer-specific verification)
-7. Bond becomes available for next swap (capital efficiency)
+1. User creates auction order: "1 ETH → NEAR tokens" with Dutch auction
+2. Dutch auction runs for 2 minutes (rates improve over time, Fusion+ standard)
+3. First qualified bonded relayer wins when rate reaches their threshold
+4. User pays winning relayer IMMEDIATELY at auction rate (Across Prime benefit)
+5. Winning relayer creates HTLC on NEAR with secret hash (atomic security)
+6. User claims NEAR tokens with secret reveal
+7. Relayer claims ETH using revealed secret (relayer-specific verification)
+8. Bond becomes available for next auction immediately (capital efficiency)
 ```
 
 ### Relayer Verification Security
@@ -673,6 +680,30 @@ Bonded + HTLC Partial Fills:
 - **Immediate bond reuse** after each partial claim (not after full order completion)
 - **Atomic security** preserved for each partial fill through HTLC
 
+## Dutch Auction Implementation Summary
+
+**Primary Implementation Points:**
+
+1. **Turnstile Contract Enhancement**
+   - Add DutchAuction struct and auction management functions
+   - Implement bond tier system (100 ETH, 50 ETH, 25 ETH, 10 ETH)
+   - Handle linear rate improvement over 120 seconds
+
+2. **Cross-Chain Resolver Integration**
+   - Monitor auction progress and completion
+   - Execute immediate bonded payment after auction ends
+   - Coordinate HTLC creation with winning relayer
+
+3. **Order Structure Updates**
+   - Include auction parameters: initialRateBump, auctionDuration, priceOracle
+   - Define bond tier requirements for different relayer sizes
+
+**Integration Flow:**
+
+```
+Dutch Auction (2min) → Immediate Bonded Payment → HTLC Creation → Bond Reuse
+```
+
 #### **Relayer and Resolver Implementation**
 
 **Component Architecture**:
@@ -715,14 +746,174 @@ class CrossChainResolver {
 }
 ```
 
-#### **Multi-Chain Extension**
+#### Dutch Auction Implementation
 
-**Extensible to other chains**: Base/Arbitrum → NEAR, NEAR → Solana, etc.
-**Same pattern**: Bonded relayers + HTLC atomic security on any chain pair
+### 1. Turnstile Contract Enhancement
+
+```solidity
+contract TurnstileContract {
+    // Existing bonded relayer functionality
+    uint256 public cumulativePayments;
+    bytes32 public merkleRoot;
+    mapping(address => uint256) public relayerBonds;
+
+    // NEW: Dutch Auction functionality
+    struct DutchAuction {
+        uint256 startTime;           // Auction start timestamp
+        uint256 duration;            // 120 seconds
+        uint256 initialRateBump;     // Start 1% worse than market
+        uint256 currentRate;         // Current auction rate
+        address marketRateOracle;    // Price feed
+        bool active;                 // Auction status
+
+        // Bonded relayer tiers (Fusion+ pattern)
+        mapping(uint256 => uint256) tierMinBonds;  // tier => min bond requirement
+        mapping(uint256 => uint256) tierUnlockTime; // tier => when tier can bid
+    }
+
+    mapping(bytes32 => DutchAuction) public auctions;
+
+    function startDutchAuction(
+        bytes32 orderHash,
+        uint256 initialRateBump,
+        uint256 duration,
+        address oracle
+    ) external {
+        auctions[orderHash] = DutchAuction({
+            startTime: block.timestamp,
+            duration: duration,
+            initialRateBump: initialRateBump,
+            currentRate: initialRateBump,
+            marketRateOracle: oracle,
+            active: true,
+            // Tier setup (from Fusion+ pattern)
+            tierMinBonds: {
+                0: 100 ether,  // Tier 0: 100 ETH bond, can bid immediately
+                1: 50 ether,   // Tier 1: 50 ETH bond, can bid after 30s
+                2: 25 ether,   // Tier 2: 25 ETH bond, can bid after 60s
+                3: 10 ether    // Tier 3: 10 ETH bond, can bid after 90s
+            }
+        });
+    }
+
+    function getCurrentAuctionRate(bytes32 orderHash) public view returns (uint256) {
+        DutchAuction storage auction = auctions[orderHash];
+        if (!auction.active) return 0;
+
+        uint256 elapsed = block.timestamp - auction.startTime;
+        if (elapsed >= auction.duration) return 0; // Market rate
+
+        // Linear rate improvement (Fusion+ style)
+        uint256 progress = (elapsed * 100) / auction.duration; // 0-100%
+        return auction.initialRateBump * (100 - progress) / 100;
+    }
+
+    function submitAuctionBid(bytes32 orderHash) external returns (bool) {
+        DutchAuction storage auction = auctions[orderHash];
+        require(auction.active, "Auction not active");
+
+        uint256 currentRate = getCurrentAuctionRate(orderHash);
+        uint256 relayerTier = getRelayerTier(msg.sender);
+
+        // Check if relayer's tier can bid at current time (Fusion+ pattern)
+        uint256 elapsed = block.timestamp - auction.startTime;
+        require(elapsed >= auction.tierUnlockTime[relayerTier], "Tier not unlocked yet");
+
+        // Check bond capacity
+        require(relayerBonds[msg.sender] >= auction.tierMinBonds[relayerTier], "Insufficient bond");
+
+        // First qualified bidder wins (Fusion+ rule)
+        auction.active = false;
+        return true;
+    }
+}
+```
+
+### 2. Order Structure Update
+
+```solidity
+struct AuctionHTLCOrder {
+    // Standard HTLC fields
+    bytes32 secretHash;
+    uint256 timeout;
+    address user;
+    uint256 amount;
+
+    // Dutch Auction parameters (from Fusion+ spec)
+    uint256 initialRateBump;    // Starting rate disadvantage (e.g., 100 = 1%)
+    uint256 auctionDuration;    // Duration in seconds (120s)
+    address priceOracle;        // Market rate source
+
+    // Bonded relayer requirements
+    uint256 minBondTier;        // Minimum tier allowed to bid
+    bool requireBondHistory;    // Require proven track record
+}
+```
+
+### 3. Cross-Chain Resolver Integration
+
+```typescript
+// Modified resolver with Dutch auction support
+class DutchAuctionResolver {
+  async processOrder(order: AuctionHTLCOrder): Promise<void> {
+    // Phase 1: Start Dutch auction on Turnstile Contract
+    const auctionTx = await this.turnstileContract.startDutchAuction(
+      order.hash,
+      order.initialRateBump, // 100 = 1% worse than market
+      order.auctionDuration, // 120 seconds
+      order.priceOracle // Chainlink/oracle address
+    );
+
+    // Phase 2: Monitor auction progress
+    const auctionResult = await this.waitForAuctionCompletion(order.hash);
+
+    // Phase 3: Execute bonded payment (Across Prime innovation)
+    const winningRelayer = auctionResult.winner;
+    const finalRate = auctionResult.finalRate;
+
+    // User pays winning relayer immediately (not escrow!)
+    await this.executeImmediatePayment(
+      order.user,
+      winningRelayer,
+      order.amount
+    );
+
+    // Phase 4: Winning relayer creates HTLC
+    await winningRelayer.createNEARHTLC({
+      secretHash: order.secretHash,
+      amount: this.calculateDestinationAmount(order.amount, finalRate),
+      timeout: order.timeout,
+    });
+  }
+
+  async waitForAuctionCompletion(orderHash: bytes32): Promise<AuctionResult> {
+    return new Promise(resolve => {
+      const interval = setInterval(async () => {
+        const auction = await this.turnstileContract.auctions(orderHash);
+
+        if (!auction.active) {
+          // Auction completed
+          clearInterval(interval);
+          resolve({
+            winner: auction.winner,
+            finalRate: auction.finalRate,
+            duration: Date.now() - auction.startTime,
+          });
+        }
+      }, 1000); // Check every second
+    });
+  }
+}
+```
+
+#### Multi-Chain Extension
+
+Extensible to other chains: Base/Arbitrum → NEAR, NEAR → Solana, etc.
+Same pattern: Dutch auction + Bonded relayers + HTLC atomic security
 
 ## System Component Breakdown
 
-### 1. **Turnstile Contract** (Across Prime Core)
+### 1. Turnstile Contract (Across Prime Core)
 
 ```solidity
 contract TurnstileContract {
@@ -756,20 +947,20 @@ contract TurnstileContract {
 
 ## Capital Efficiency Example
 
-**Traditional Escrow Model**:
+**Traditional Fusion+**:
 
 ```
 Bond: $50,000
-Order 1: $5,000 → Locked for 1 hour settlement
-Order 2: $5,000 → Must wait for Order 1 settlement
-Throughput: $5,000/hour = $120,000/day
+Order 1: $5,000 → 2min auction + 1 hour cross-chain settlement
+Order 2: $5,000 → Must wait for Order 1 complete settlement
+Throughput: $5,000/62min = $195,000/day
 ```
 
-**Our Bonded + HTLC Model**:
+**Our Dutch Auction + Bonded Model**:
 
 ```
 Bond: $50,000
-Order 1: $5,000 → HTLC completes in 30 seconds → Bond available
-Order 2: $5,000 → Can start immediately → Bond available
-Throughput: $5,000/30sec = $14,400,000/day (120x improvement)
+Order 1: $5,000 → 2min auction + immediate payment + 30sec HTLC → Bond available
+Order 2: $5,000 → Can start new auction immediately
+Throughput: $5,000/2.5min = $2,880,000/day (15x improvement)
 ```
