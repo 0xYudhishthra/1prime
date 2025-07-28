@@ -5,8 +5,6 @@ export interface ChainConfig {
   rpcUrl: string;
   contractAddresses: {
     htlc: string;
-    fulfillment: string;
-    turnstile: string;
   };
   blockTime: number; // Average block time in seconds
   finalityBlocks: number; // Blocks to wait for finality
@@ -31,8 +29,6 @@ export interface FusionOrder {
   auctionStartTime: number;
   auctionDuration: number;
   initialRateBump: number; // Basis points
-  minBondTier: number;
-  requireBondHistory: boolean;
   signature: string;
   nonce: string;
   createdAt: number;
@@ -106,12 +102,7 @@ export interface TimelockPhase {
 export interface RelayerStatus {
   address: string;
   isKyc: boolean;
-  bondAmount: string;
-  activeBond: string;
   reputation: number;
-  tier: number;
-  slashingHistory: number;
-  activeOrders: string[];
   completedOrders: number;
   lastActivity: number;
 }
@@ -175,6 +166,10 @@ export interface RelayerConfig {
     maxRequestsPerMinute: number;
     corsOrigins: string[];
   };
+  database: {
+    supabaseUrl: string;
+    supabaseKey: string;
+  };
   monitoring: {
     healthCheckInterval: number;
     escrowCheckInterval: number;
@@ -185,7 +180,7 @@ export interface RelayerConfig {
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
-  error?: string;
+  error?: string | undefined;
   timestamp: number;
 }
 
@@ -199,8 +194,6 @@ export interface CreateOrderRequest {
   timeout: number;
   auctionDuration?: number;
   initialRateBump?: number;
-  minBondTier?: number;
-  requireBondHistory?: boolean;
   signature: string;
   nonce: string;
 }
@@ -208,7 +201,6 @@ export interface CreateOrderRequest {
 export interface ResolverBidRequest {
   orderHash: string;
   resolver: string;
-  bondProof: string;
   estimatedGas: number;
   signature: string;
 }

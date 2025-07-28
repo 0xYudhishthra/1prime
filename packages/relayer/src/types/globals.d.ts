@@ -1,22 +1,5 @@
 // Global type declarations for modules that might not have types
 
-declare module "node-cron" {
-  export interface ScheduledTask {
-    start(): void;
-    stop(): void;
-    destroy(): void;
-  }
-
-  export function schedule(
-    cronExpression: string,
-    func: () => void,
-    options?: {
-      scheduled?: boolean;
-      timezone?: string;
-    }
-  ): ScheduledTask;
-}
-
 // Extend global NodeJS types if needed
 declare global {
   namespace NodeJS {
@@ -35,6 +18,8 @@ declare global {
       REDIS_PORT?: string;
       REDIS_PASSWORD?: string;
       REDIS_DB?: string;
+      SUPABASE_URL?: string;
+      SUPABASE_ANON_KEY?: string;
     }
   }
 }
