@@ -38,8 +38,6 @@ const ERC20_ABI = [
 export class EVMChainAdapter extends BaseChainAdapter {
   private provider!: Provider;
   private htlcContract!: Contract;
-  private turnstileContract!: Contract;
-  private fulfillmentContract!: Contract;
   private wallet?: Wallet;
 
   constructor(config: ChainConfig, logger: Logger, privateKey?: string) {
@@ -54,18 +52,6 @@ export class EVMChainAdapter extends BaseChainAdapter {
     this.htlcContract = new ethers.Contract(
       config.contractAddresses.htlc,
       HTLC_ABI,
-      this.wallet || this.provider
-    );
-
-    this.turnstileContract = new ethers.Contract(
-      config.contractAddresses.turnstile,
-      TURNSTILE_ABI,
-      this.wallet || this.provider
-    );
-
-    this.fulfillmentContract = new ethers.Contract(
-      config.contractAddresses.fulfillment,
-      FULFILLMENT_ABI,
       this.wallet || this.provider
     );
   }
@@ -303,90 +289,6 @@ export class EVMChainAdapter extends BaseChainAdapter {
       this.logOperation(
         "estimateGas",
         { operation, params },
-        undefined,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  async getOrderDetails(orderHash: string) {
-    try {
-      const orderDetails = await this.turnstileContract.orders(orderHash);
-      return {
-        secretHash: orderDetails.secretHash,
-        timeout: Number(orderDetails.timeout),
-        user: orderDetails.user,
-        amount: orderDetails.amount.toString(),
-        initialRateBump: Number(orderDetails.initialRateBump),
-        auctionDuration: Number(orderDetails.auctionDuration),
-        priceOracle: orderDetails.priceOracle,
-        minBondTier: Number(orderDetails.minBondTier),
-        requireBondHistory: orderDetails.requireBondHistory,
-        fulfilled: orderDetails.fulfilled,
-        designatedRelayer: orderDetails.designatedRelayer,
-      };
-    } catch (error) {
-      this.logOperation(
-        "getOrderDetails",
-        { orderHash },
-        undefined,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  async getRelayerBond(relayer: string) {
-    try {
-      const bondInfo = await this.turnstileContract.relayerBonds(relayer);
-      return {
-        totalBond: bondInfo.totalBond.toString(),
-        activeBond: bondInfo.activeBond.toString(),
-        withdrawalRequest: bondInfo.withdrawalRequest.toString(),
-        withdrawalDeadline: Number(bondInfo.withdrawalDeadline),
-        challengePeriodActive: bondInfo.challengePeriodActive,
-        bondedSince: Number(bondInfo.bondedSince),
-        slashingHistory: Number(bondInfo.slashingHistory),
-      };
-    } catch (error) {
-      this.logOperation(
-        "getRelayerBond",
-        { relayer },
-        undefined,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  async markOrderFulfilled(
-    orderHash: string,
-    secret: string,
-    relayer: string
-  ): Promise<string> {
-    if (!this.wallet) {
-      throw new Error("Wallet not configured for transaction signing");
-    }
-
-    try {
-      const tx = await this.fulfillmentContract.markETHClaimed(
-        orderHash,
-        secret,
-        relayer
-      );
-      const receipt = await tx.wait();
-
-      this.logOperation(
-        "markOrderFulfilled",
-        { orderHash, relayer },
-        receipt.hash
-      );
-      return receipt.hash;
-    } catch (error) {
-      this.logOperation(
-        "markOrderFulfilled",
-        { orderHash, relayer },
         undefined,
         error as Error
       );

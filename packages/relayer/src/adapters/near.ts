@@ -8,7 +8,7 @@ const { connect, keyStores, utils } = nearAPI;
 export class NEARChainAdapter extends BaseChainAdapter {
   private connection?: nearAPI.Near;
   private account?: nearAPI.Account;
-  private keyStore?: nearAPI.KeyStore;
+  private keyStore?: any;
 
   constructor(config: ChainConfig, logger: Logger, privateKey?: string) {
     super(config, logger);
@@ -79,8 +79,10 @@ export class NEARChainAdapter extends BaseChainAdapter {
 
       if (token && token !== "NEAR") {
         // For fungible tokens, call ft_balance_of
-        const result = await account.viewFunction(token, "ft_balance_of", {
-          account_id: address,
+        const result = await account.viewFunction({
+          contractId: token,
+          methodName: "ft_balance_of",
+          args: { account_id: address },
         });
         balance = result;
       } else {
@@ -187,11 +189,11 @@ export class NEARChainAdapter extends BaseChainAdapter {
         this.config.contractAddresses.htlc
       );
 
-      const htlcDetails = await account.viewFunction(
-        this.config.contractAddresses.htlc,
-        "get_htlc_details",
-        { order_hash: orderHash }
-      );
+      const htlcDetails = await account.viewFunction({
+        contractId: this.config.contractAddresses.htlc,
+        methodName: "get_htlc_details",
+        args: { order_hash: orderHash },
+      });
 
       const escrowDetails: EscrowDetails = {
         orderHash,
@@ -342,122 +344,6 @@ export class NEARChainAdapter extends BaseChainAdapter {
       this.logOperation(
         "estimateGas",
         { operation, params },
-        undefined,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  async getOrderDetails(orderHash: string) {
-    try {
-      if (!this.connection) {
-        await this.initializeConnection();
-      }
-
-      const account = await this.connection!.account(
-        this.config.contractAddresses.turnstile
-      );
-
-      const orderDetails = await account.viewFunction(
-        this.config.contractAddresses.turnstile,
-        "get_order",
-        { order_hash: orderHash }
-      );
-
-      return {
-        secretHash: orderDetails.secret_hash,
-        timeout: parseInt(orderDetails.timeout),
-        user: orderDetails.user,
-        amount: orderDetails.amount,
-        initialRateBump: parseInt(orderDetails.initial_rate_bump),
-        auctionDuration: parseInt(orderDetails.auction_duration),
-        priceOracle: orderDetails.price_oracle,
-        minBondTier: parseInt(orderDetails.min_bond_tier),
-        requireBondHistory: orderDetails.require_bond_history,
-        fulfilled: orderDetails.fulfilled,
-        designatedRelayer: orderDetails.designated_relayer,
-      };
-    } catch (error) {
-      this.logOperation(
-        "getOrderDetails",
-        { orderHash },
-        undefined,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  async getRelayerBond(relayer: string) {
-    try {
-      if (!this.connection) {
-        await this.initializeConnection();
-      }
-
-      const account = await this.connection!.account(
-        this.config.contractAddresses.turnstile
-      );
-
-      const bondInfo = await account.viewFunction(
-        this.config.contractAddresses.turnstile,
-        "get_relayer_bond",
-        { relayer }
-      );
-
-      return {
-        totalBond: bondInfo.total_bond,
-        activeBond: bondInfo.active_bond,
-        withdrawalRequest: bondInfo.withdrawal_request,
-        withdrawalDeadline: parseInt(bondInfo.withdrawal_deadline),
-        challengePeriodActive: bondInfo.challenge_period_active,
-        bondedSince: parseInt(bondInfo.bonded_since),
-        slashingHistory: parseInt(bondInfo.slashing_history),
-      };
-    } catch (error) {
-      this.logOperation(
-        "getRelayerBond",
-        { relayer },
-        undefined,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  async markOrderFulfilled(
-    orderHash: string,
-    secret: string,
-    relayer: string
-  ): Promise<string> {
-    if (!this.account) {
-      throw new Error("NEAR account not configured for transaction signing");
-    }
-
-    try {
-      const outcome = await this.account.functionCall({
-        contractId: this.config.contractAddresses.fulfillment,
-        methodName: "mark_near_claimed",
-        args: {
-          order_hash: orderHash,
-          secret: secret,
-          relayer: relayer,
-        },
-        gas: this.config.gasLimit.withdrawal.toString(),
-      });
-
-      const transactionHash = outcome.transaction.hash;
-
-      this.logOperation(
-        "markOrderFulfilled",
-        { orderHash, relayer },
-        transactionHash
-      );
-      return transactionHash;
-    } catch (error) {
-      this.logOperation(
-        "markOrderFulfilled",
-        { orderHash, relayer },
         undefined,
         error as Error
       );

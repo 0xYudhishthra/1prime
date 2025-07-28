@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { createLogger, format, transports } from "winston";
 import dotenv from "dotenv";
 import { RelayerService, RelayerServiceConfig } from "./services/relayer";
+import { DatabaseService, DatabaseConfig } from "./services/database";
 import { createRelayerRoutes } from "./api/routes";
 import { RelayerConfig } from "./types";
 
@@ -54,6 +55,10 @@ const config: RelayerConfig = {
     ),
     corsOrigins: (process.env.CORS_ORIGINS || "*").split(","),
   },
+  database: {
+    supabaseUrl: process.env.SUPABASE_URL || "",
+    supabaseKey: process.env.SUPABASE_ANON_KEY || "",
+  },
   monitoring: {
     healthCheckInterval: parseInt(
       process.env.HEALTH_CHECK_INTERVAL || "30000",
@@ -85,7 +90,7 @@ const relayerServiceConfig: RelayerServiceConfig = {
       near: process.env.NEAR_PRIVATE_KEY,
       "near-testnet": process.env.NEAR_PRIVATE_KEY,
     }).filter(([_, value]) => value !== undefined)
-  ),
+  ) as Record<string, string>,
   enablePartialFills: process.env.ENABLE_PARTIAL_FILLS === "true",
   maxActiveOrders: parseInt(process.env.MAX_ACTIVE_ORDERS || "100", 10),
   healthCheckInterval: config.monitoring.healthCheckInterval,
@@ -94,11 +99,22 @@ const relayerServiceConfig: RelayerServiceConfig = {
 class RelayerApplication {
   private app: express.Application;
   private relayerService: RelayerService;
+  private databaseService: DatabaseService;
   private server?: any;
 
   constructor() {
     this.app = express();
-    this.relayerService = new RelayerService(logger, relayerServiceConfig);
+
+    // Initialize database service
+    this.databaseService = new DatabaseService(config.database, logger);
+
+    // Initialize relayer service with database
+    this.relayerService = new RelayerService(
+      logger,
+      relayerServiceConfig,
+      this.databaseService
+    );
+
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
