@@ -3,9 +3,7 @@ export interface ChainConfig {
   name: string;
   type: "evm" | "near";
   rpcUrl: string;
-  contractAddresses: {
-    htlc: string;
-  };
+  // No static contract addresses - HTLCs are deployed per swap
   blockTime: number; // Average block time in seconds
   finalityBlocks: number; // Blocks to wait for finality
   gasLimit: {
@@ -32,6 +30,9 @@ export interface FusionOrder {
   signature: string;
   nonce: string;
   createdAt: number;
+  // Dynamic HTLC contract addresses (set by resolver during Phase 2)
+  sourceChainHtlcAddress?: string;
+  destinationChainHtlcAddress?: string;
 }
 
 export interface DutchAuctionState {
@@ -139,31 +140,34 @@ export interface ChainAdapter {
   getBalance(address: string, token?: string): Promise<string>;
   checkContractDeployment(address: string): Promise<boolean>;
   createEscrow(order: FusionOrder, resolver: string): Promise<string>;
-  verifyEscrow(orderHash: string): Promise<EscrowDetails>;
-  withdrawFromEscrow(orderHash: string, secret: string): Promise<string>;
-  cancelEscrow(orderHash: string): Promise<string>;
+  verifyEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<EscrowDetails>;
+  withdrawFromEscrow(
+    orderHash: string,
+    secret: string,
+    htlcContractAddress: string
+  ): Promise<string>;
+  cancelEscrow(orderHash: string, htlcContractAddress: string): Promise<string>;
   getBlockNumber(): Promise<number>;
   getTransaction(hash: string): Promise<any>;
-  estimateGas(operation: string, params: any): Promise<number>;
+  estimateGas(
+    operation: string,
+    params: any,
+    htlcContractAddress?: string
+  ): Promise<number>;
 }
 
 export interface RelayerConfig {
   port: number;
   environment: "development" | "staging" | "production";
   chains: Record<string, ChainConfig>;
-  redis: {
-    host: string;
-    port: number;
-    password?: string;
-    db: number;
-  };
   logging: {
     level: "debug" | "info" | "warn" | "error";
     file?: string;
   };
   security: {
-    enableRateLimit: boolean;
-    maxRequestsPerMinute: number;
     corsOrigins: string[];
   };
   database: {
