@@ -35,12 +35,6 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
       htlc:
         process.env.ETHEREUM_HTLC_ADDRESS ||
         "0x0000000000000000000000000000000000000000",
-      fulfillment:
-        process.env.ETHEREUM_FULFILLMENT_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      turnstile:
-        process.env.ETHEREUM_TURNSTILE_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
     },
   } as ChainConfig,
 
@@ -55,12 +49,6 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     contractAddresses: {
       htlc:
         process.env.BASE_HTLC_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      fulfillment:
-        process.env.BASE_FULFILLMENT_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      turnstile:
-        process.env.BASE_TURNSTILE_ADDRESS ||
         "0x0000000000000000000000000000000000000000",
     },
   } as ChainConfig,
@@ -77,12 +65,6 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
       htlc:
         process.env.BSC_HTLC_ADDRESS ||
         "0x0000000000000000000000000000000000000000",
-      fulfillment:
-        process.env.BSC_FULFILLMENT_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      turnstile:
-        process.env.BSC_TURNSTILE_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
     },
   } as ChainConfig,
 
@@ -97,12 +79,6 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     contractAddresses: {
       htlc:
         process.env.POLYGON_HTLC_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      fulfillment:
-        process.env.POLYGON_FULFILLMENT_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      turnstile:
-        process.env.POLYGON_TURNSTILE_ADDRESS ||
         "0x0000000000000000000000000000000000000000",
     },
   } as ChainConfig,
@@ -119,12 +95,6 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
       htlc:
         process.env.ARBITRUM_HTLC_ADDRESS ||
         "0x0000000000000000000000000000000000000000",
-      fulfillment:
-        process.env.ARBITRUM_FULFILLMENT_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
-      turnstile:
-        process.env.ARBITRUM_TURNSTILE_ADDRESS ||
-        "0x0000000000000000000000000000000000000000",
     },
   } as ChainConfig,
 
@@ -135,11 +105,7 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     name: "NEAR Protocol",
     rpcUrl: process.env.NEAR_RPC_URL || "https://rpc.mainnet.near.org",
     contractAddresses: {
-      htlc: process.env.NEAR_HTLC_ADDRESS || "htlc.unite-defi.near",
-      fulfillment:
-        process.env.NEAR_FULFILLMENT_ADDRESS || "fulfillment.unite-defi.near",
-      turnstile:
-        process.env.NEAR_TURNSTILE_ADDRESS || "turnstile.unite-defi.near",
+      htlc: process.env.NEAR_HTLC_ADDRESS || "htlc.1prime.near",
     },
   } as ChainConfig,
 
@@ -151,10 +117,6 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     rpcUrl: process.env.NEAR_TESTNET_RPC_URL || "https://rpc.testnet.near.org",
     contractAddresses: {
       htlc: process.env.NEAR_TESTNET_HTLC_ADDRESS || "htlc.testnet",
-      fulfillment:
-        process.env.NEAR_TESTNET_FULFILLMENT_ADDRESS || "fulfillment.testnet",
-      turnstile:
-        process.env.NEAR_TESTNET_TURNSTILE_ADDRESS || "turnstile.testnet",
     },
   } as ChainConfig,
 };
