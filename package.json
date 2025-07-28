@@ -1,33 +1,32 @@
 {
-  "name": "unite-defi",
+  "name": "1prime",
   "version": "1.0.0",
-  "description": "Unite DeFi Protocol",
+  "description": "1Prime Protocol - Cross-chain atomic swaps between EVM and NEAR",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist",
-    "test": "bun test",
-    "lint": "eslint src/**/*.ts",
-    "format": "prettier --write src/**/*.ts"
+    "dev:relayer": "pnpm --filter @1prime/relayer dev",
+    "build:relayer": "pnpm --filter @1prime/relayer build",
+    "test:relayer": "pnpm --filter @1prime/relayer test",
+    "start:relayer": "pnpm --filter @1prime/relayer start",
+    "build:all": "pnpm -r build",
+    "test:all": "pnpm -r test",
+    "lint:all": "pnpm -r lint",
+    "format:all": "pnpm -r format",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "install:all": "pnpm install"
   },
   "keywords": [
     "defi",
     "blockchain",
-    "ethereum"
+    "ethereum",
+    "near",
+    "cross-chain",
+    "atomic-swaps",
+    "relayer",
+    "1prime"
   ],
-  "author": "",
+  "author": "1Prime",
   "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
-    "eslint": "^8.0.0",
-    "prettier": "^3.0.0",
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "bun": "^1.0.0"
-  },
   "packageManager": "pnpm@8.15.0"
 }
