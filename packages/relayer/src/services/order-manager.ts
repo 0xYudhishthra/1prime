@@ -46,8 +46,6 @@ export class OrderManager extends EventEmitter {
         auctionStartTime: now,
         auctionDuration: request.auctionDuration || 120000, // 2 minutes default
         initialRateBump: request.initialRateBump || 1000, // 10% default
-        minBondTier: request.minBondTier || 1,
-        requireBondHistory: request.requireBondHistory || false,
         signature: request.signature,
         nonce: request.nonce,
         createdAt: now,
@@ -100,25 +98,9 @@ export class OrderManager extends EventEmitter {
         throw new Error(`Resolver not registered: ${bid.resolver}`);
       }
 
-      // Validate resolver meets requirements
-      if (resolver.tier < order.minBondTier) {
-        throw new Error(
-          `Resolver tier ${resolver.tier} below minimum required ${order.minBondTier}`
-        );
-      }
-
-      if (order.requireBondHistory && resolver.slashingHistory > 2) {
-        throw new Error("Resolver has too many slashing incidents");
-      }
-
-      // Check if resolver can participate at current time
-      const timeSinceStart = Date.now() - auction.startTime;
-      const tierUnlockTime = this.getTierUnlockTime(resolver.tier);
-
-      if (timeSinceStart < tierUnlockTime) {
-        throw new Error(
-          `Tier ${resolver.tier} cannot bid yet. Wait ${tierUnlockTime - timeSinceStart}ms`
-        );
+      // Validate resolver is KYC approved
+      if (!resolver.isKyc) {
+        throw new Error("Resolver must be KYC approved to participate");
       }
 
       // Calculate current auction price
@@ -263,7 +245,7 @@ export class OrderManager extends EventEmitter {
     this.resolvers.set(resolver.address, resolver);
     this.logger.info("Resolver registered", {
       address: resolver.address,
-      tier: resolver.tier,
+      reputation: resolver.reputation,
     });
   }
 
@@ -313,12 +295,6 @@ export class OrderManager extends EventEmitter {
     // Linear decay from initialRateBump to 0
     const currentRate = auction.initialRateBump * (1 - progress);
     return Math.max(currentRate, 0);
-  }
-
-  private getTierUnlockTime(tier: number): number {
-    // Tier unlock times (in milliseconds from auction start)
-    const tierTimes = [0, 0, 5000, 10000, 15000]; // Tier 1-4
-    return tierTimes[tier] || 0;
   }
 
   private isBidProfitable(

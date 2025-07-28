@@ -15,6 +15,7 @@ import { SecretManager, SecretRevealConditions } from "./secret-manager";
 import { TimelockManager } from "./timelock-manager";
 import { ChainAdapterFactory } from "../adapters";
 import { isValidChainPair, getChainConfig } from "../config/chains";
+import { DatabaseService } from "./database";
 
 export interface RelayerServiceConfig {
   chainIds: string[];
@@ -27,6 +28,7 @@ export interface RelayerServiceConfig {
 export class RelayerService extends EventEmitter {
   private logger: Logger;
   private config: RelayerServiceConfig;
+  private databaseService: DatabaseService;
   private orderManager: OrderManager;
   private escrowVerifier: EscrowVerifier;
   private secretManager: SecretManager;
@@ -42,10 +44,15 @@ export class RelayerService extends EventEmitter {
     uptime: number;
   };
 
-  constructor(logger: Logger, config: RelayerServiceConfig) {
+  constructor(
+    logger: Logger,
+    config: RelayerServiceConfig,
+    databaseService: DatabaseService
+  ) {
     super();
     this.logger = logger;
     this.config = config;
+    this.databaseService = databaseService;
     this.stats = {
       ordersCreated: 0,
       ordersCompleted: 0,
@@ -269,7 +276,7 @@ export class RelayerService extends EventEmitter {
 
       this.logger.info("Resolver registered", {
         address: resolver.address,
-        tier: resolver.tier,
+        reputation: resolver.reputation,
         isKyc: resolver.isKyc,
       });
     } catch (error) {

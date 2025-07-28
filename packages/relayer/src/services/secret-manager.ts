@@ -138,6 +138,9 @@ export class SecretManager extends EventEmitter {
       }
 
       // Verify resolver is authorized
+      if (!request.signature) {
+        throw new Error("Signature is required for secret reveal");
+      }
       const resolver = this.resolvers.get(request.signature.split(":")[0]); // Simplified signature parsing
       if (!resolver || !resolver.isKyc) {
         throw new Error("Unauthorized resolver");
@@ -208,6 +211,9 @@ export class SecretManager extends EventEmitter {
       }
 
       const secretToReveal = merkleTree.secrets[secretIndex];
+      if (!secretToReveal) {
+        throw new Error(`Secret at index ${secretIndex} not found`);
+      }
 
       // Record the partial fill
       const partialFill: PartialFill = {
@@ -371,8 +377,12 @@ export class SecretManager extends EventEmitter {
         const left = currentLevel[i];
         const right = currentLevel[i + 1] || left; // Handle odd number of nodes
 
+        if (!left) {
+          throw new Error(`Invalid merkle tree node at index ${i}`);
+        }
+
         const combined = createHash("sha256")
-          .update(left + right)
+          .update(left + (right || ""))
           .digest("hex");
 
         nextLevel.push(combined);
@@ -381,7 +391,11 @@ export class SecretManager extends EventEmitter {
       currentLevel = nextLevel;
     }
 
-    return currentLevel[0];
+    const root = currentLevel[0];
+    if (!root) {
+      throw new Error("Invalid merkle tree - no root found");
+    }
+    return root;
   }
 
   private calculateSecretIndex(

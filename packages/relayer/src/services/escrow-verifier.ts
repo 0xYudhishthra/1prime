@@ -318,8 +318,6 @@ export class EscrowVerifier extends EventEmitter {
 
       const deploymentChecks = await Promise.all([
         adapter.checkContractDeployment(contracts.htlc),
-        adapter.checkContractDeployment(contracts.fulfillment),
-        adapter.checkContractDeployment(contracts.turnstile),
       ]);
 
       const allDeployed = deploymentChecks.every(deployed => deployed);
@@ -330,8 +328,6 @@ export class EscrowVerifier extends EventEmitter {
         this.logger.error("Contract deployment verification failed", {
           chainId,
           htlc: deploymentChecks[0],
-          fulfillment: deploymentChecks[1],
-          turnstile: deploymentChecks[2],
         });
       }
 
