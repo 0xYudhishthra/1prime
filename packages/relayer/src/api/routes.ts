@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import Joi from "joi";
 import type { Logger } from "winston";
 import { RelayerService } from "../services/relayer";
@@ -21,8 +21,6 @@ const createOrderSchema = Joi.object({
   timeout: Joi.number().integer().min(Date.now()).required(),
   auctionDuration: Joi.number().integer().min(30000).max(300000).optional(),
   initialRateBump: Joi.number().integer().min(0).max(10000).optional(),
-  minBondTier: Joi.number().integer().min(1).max(4).optional(),
-  requireBondHistory: Joi.boolean().optional(),
   signature: Joi.string().required(),
   nonce: Joi.string().required(),
 });
@@ -30,7 +28,6 @@ const createOrderSchema = Joi.object({
 const resolverBidSchema = Joi.object({
   orderHash: Joi.string().hex().length(64).required(),
   resolver: Joi.string().required(),
-  bondProof: Joi.string().required(),
   estimatedGas: Joi.number().integer().min(0).required(),
   signature: Joi.string().required(),
 });
@@ -45,12 +42,7 @@ const secretRevealSchema = Joi.object({
 const resolverRegistrationSchema = Joi.object({
   address: Joi.string().required(),
   isKyc: Joi.boolean().required(),
-  bondAmount: Joi.string().required(),
-  activeBond: Joi.string().required(),
   reputation: Joi.number().min(0).max(100).required(),
-  tier: Joi.number().integer().min(1).max(4).required(),
-  slashingHistory: Joi.number().integer().min(0).required(),
-  activeOrders: Joi.array().items(Joi.string()).required(),
   completedOrders: Joi.number().integer().min(0).required(),
   lastActivity: Joi.number().integer().required(),
 });
@@ -66,27 +58,37 @@ export function createRelayerRoutes(
     success: boolean,
     data?: T,
     error?: string
-  ): ApiResponse<T> => ({
-    success,
-    data,
-    error,
-    timestamp: Date.now(),
-  });
+  ): ApiResponse<T> => {
+    const response: ApiResponse<T> = {
+      success,
+      timestamp: Date.now(),
+    };
+    if (data !== undefined) {
+      response.data = data;
+    }
+    if (error !== undefined) {
+      response.error = error;
+    }
+    return response;
+  };
 
   // Helper function to handle async route errors
   const asyncHandler =
-    (fn: Function) => (req: Request, res: Response, next: Function) => {
-      Promise.resolve(fn(req, res, next)).catch(next);
+    (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+    (req: Request, res: Response, next: NextFunction) => {
+      return Promise.resolve(fn(req, res, next)).catch(next);
     };
 
   // Helper function to validate request body
   const validateBody =
-    (schema: Joi.Schema) => (req: Request, res: Response, next: Function) => {
+    (schema: Joi.Schema) =>
+    (req: Request, res: Response, next: NextFunction): void => {
       const { error, value } = schema.validate(req.body);
       if (error) {
-        return res
+        res
           .status(400)
           .json(createResponse(false, undefined, error.details[0].message));
+        return;
       }
       req.body = value;
       next();
@@ -132,14 +134,14 @@ export function createRelayerRoutes(
           destinationChain: createOrderRequest.destinationChain,
         });
 
-        res.status(201).json(createResponse(true, orderStatus));
+        return res.status(201).json(createResponse(true, orderStatus));
       } catch (error) {
         logger.error("API: Failed to create order", {
           error: (error as Error).message,
           maker,
           request: createOrderRequest,
         });
-        res
+        return res
           .status(400)
           .json(createResponse(false, undefined, (error as Error).message));
       }
@@ -167,13 +169,13 @@ export function createRelayerRoutes(
             .json(createResponse(false, undefined, "Order not found"));
         }
 
-        res.json(createResponse(true, orderStatus));
+        return res.json(createResponse(true, orderStatus));
       } catch (error) {
         logger.error("API: Failed to get order status", {
           error: (error as Error).message,
           orderHash,
         });
-        res
+        return res
           .status(500)
           .json(createResponse(false, undefined, "Internal server error"));
       }
@@ -277,7 +279,7 @@ export function createRelayerRoutes(
 
         logger.info("Resolver registered via API", {
           address: resolver.address,
-          tier: resolver.tier,
+          reputation: resolver.reputation,
         });
 
         res.status(201).json(
@@ -318,13 +320,13 @@ export function createRelayerRoutes(
             .json(createResponse(false, undefined, "Auction not found"));
         }
 
-        res.json(createResponse(true, orderStatus.auction));
+        return res.json(createResponse(true, orderStatus.auction));
       } catch (error) {
         logger.error("API: Failed to get auction info", {
           error: (error as Error).message,
           orderHash,
         });
-        res
+        return res
           .status(500)
           .json(createResponse(false, undefined, "Internal server error"));
       }
@@ -393,7 +395,7 @@ export function createRelayerRoutes(
         .json(createResponse(false, undefined, error.message));
     }
 
-    res
+    return res
       .status(500)
       .json(createResponse(false, undefined, "Internal server error"));
   });
