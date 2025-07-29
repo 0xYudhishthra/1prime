@@ -1068,7 +1068,7 @@ dependencies = [
  "k256",
  "log",
  "rand 0.8.5",
- "rlp",
+ "rlp 0.5.2",
  "serde",
  "sha3",
  "zeroize",
@@ -1286,7 +1286,7 @@ dependencies = [
  "once_cell",
  "open-fastrlp",
  "rand 0.8.5",
- "rlp",
+ "rlp 0.5.2",
  "serde",
  "serde_json",
  "strum 0.26.3",
@@ -2205,7 +2205,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28220f89297a075ddc7245cd538076ee98b01f2a9c23a53a4f1105d5a322808"
 dependencies = [
- "rlp",
+ "rlp 0.5.2",
 ]
 
 [[package]]
@@ -2627,6 +2627,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8542f031adc257a27ba46ad904c241a88470ee95130663a9e5c08cf8e124f4d4"
 dependencies = [
  "borsh",
+ "schemars 0.8.22",
  "serde",
 ]
 
@@ -2926,6 +2927,7 @@ dependencies = [
  "near-sys",
  "near-token",
  "once_cell",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "wee_alloc",
@@ -3137,6 +3139,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "omni-transaction"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "546e5e9ad68ad26a559233cb3891fdda9137afff14060b7c2ac4b4fe553655bc"
+dependencies = [
+ "borsh",
+ "bs58 0.5.1",
+ "hex",
+ "near-account-id",
+ "near-sdk",
+ "rlp 0.6.1",
+ "schemars 0.8.22",
+ "serde",
+ "serde-big-array",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3153,6 +3174,7 @@ dependencies = [
  "hex",
  "k256",
  "near-api",
+ "omni-transaction",
  "regex",
  "reqwest 0.12.22",
  "serde",
@@ -3959,6 +3981,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlp"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa24e92bb2a83198bb76d661a71df9f7076b8c420b8696e4d3d97d50d94479e3"
+dependencies = [
+ "bytes",
+ "rustc-hex",
+]
+
+[[package]]
 name = "rlp-derive"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4311,6 +4343,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
