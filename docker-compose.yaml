@@ -19,9 +19,10 @@ services:
   shade-agent-app:
     environment:
       NEXT_PUBLIC_contractId: ${NEXT_PUBLIC_contractId}
+      ALCHEMY_ETH_SEPOLIA_RPC_URL: ${ALCHEMY_ETH_SEPOLIA_RPC_URL}
     platform: linux/amd64 # Explicitly set for TDX
     # shade-agent-app-image
-    image: dreamerchaserhah/1prime-resolver@sha256:7c8c63fafccfa02be3b3318aefb81e10a9a1d353bb12a52e6807b37e79790601
+    image: dreamerchaserhah/1prime-resolver@sha256:a4bcadeef68e76828e5e49424c61fc1627f117448a441d8d81bad2fd0dd0ba91
     container_name: shade-agent-app
     ports:
       - "3001:3001"

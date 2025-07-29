@@ -8,7 +8,7 @@ use crate::{routes::eth::get_address::get_funding_eth_address, utils::SEPOLIA_RP
 /// </summary>
 
 pub async fn get_balance() -> Result<String, String>{
-    let provider = Provider::<Http>::try_from(SEPOLIA_RPC_URL)
+    let provider = Provider::<Http>::try_from(SEPOLIA_RPC_URL.as_str())
         .map_err(|e| format!("Provider error: {}", e))?;
     
     let addr_str = get_funding_eth_address().await;

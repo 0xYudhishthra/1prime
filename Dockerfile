@@ -3,7 +3,16 @@ FROM rust:1.88-alpine AS builder
 WORKDIR /app
 
 # Install musl-dev for static linking and OpenSSL dependencies
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static \
+    perl \
+    make \
+    gcc \
+    eudev-dev \
+    linux-headers
 
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
