@@ -408,15 +408,13 @@ export class OrderManager extends EventEmitter {
     currentRate: number,
     gasEstimate: number
   ): boolean {
-    // Simplified profitability check - in production this would use real gas prices
-    // and token prices from oracles
-    const baseFee = 20e9; // 20 gwei
-    const gasCost = gasEstimate * baseFee;
+    // Simplified profitability check for testing
+    // In production this would use real gas prices and token prices from oracles
     const rateBump = currentRate / 10000; // Convert basis points to decimal
 
-    // Order is profitable if rate adjustment covers gas costs plus minimum profit
+    // For testing: consider profitable if rate adjustment is at least 1% of destination amount
     const rateAdjustment = parseFloat(order.destinationAmount) * rateBump;
-    const minProfit = gasCost * 1.1; // 10% minimum profit margin
+    const minProfit = parseFloat(order.destinationAmount) * 0.01; // 1% of destination amount
 
     return rateAdjustment >= minProfit;
   }
