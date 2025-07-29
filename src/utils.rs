@@ -3,6 +3,8 @@ use near_api::{Account, AccountId};
 
 use crate::agent::{self, agent_account_id, request_signature};
 
+pub static SEPOLIA_RPC_URL: &str = env!("ALCHEMY_ETH_SEPOLIA_RPC_URL");
+
 pub async fn get_testnet_mpc_signer_account_id() -> AccountId {
     AccountId::from_str("v1.signer-prod.testnet").unwrap()
 }

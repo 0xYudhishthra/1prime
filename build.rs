@@ -1,9 +1,9 @@
 fn main() {
     // Load .env file
-    dotenvy::from_filename(".env").ok();
+    dotenvy::from_filename(".env.development.local").ok();
 
     // List the variables you want to pass to your code
-    let keys = ["API_KEY", "ANOTHER_SECRET"];
+    let keys = ["API_KEY", "ALCHEMY_ETH_SEPOLIA_RPC_URL"];
 
     for key in keys {
         if let Ok(val) = std::env::var(key) {
@@ -12,5 +12,5 @@ fn main() {
     }
 
     // Re-run build.rs if .env changes
-    println!("cargo:rerun-if-changed=.env");
+    println!("cargo:rerun-if-changed=.env.development.local");
 }
