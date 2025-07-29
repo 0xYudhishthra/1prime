@@ -2,6 +2,7 @@ import { ethers, Contract, Provider, Wallet } from "ethers";
 import { BaseChainAdapter } from "./base";
 import { ChainConfig, FusionOrder, EscrowDetails } from "../types";
 import type { Logger } from "winston";
+import { OneInchApiService } from "../services/1inch-api";
 
 const HTLC_ABI = [
   "function createHTLC(bytes32 secretHash, uint256 timeout, address designatedRelayer, string nearOrderHash) external payable returns (bytes32)",
@@ -38,11 +39,18 @@ const ERC20_ABI = [
 export class EVMChainAdapter extends BaseChainAdapter {
   private provider!: Provider;
   private wallet?: Wallet;
+  private oneInchApi?: OneInchApiService;
 
-  constructor(config: ChainConfig, logger: Logger, privateKey?: string) {
+  constructor(
+    config: ChainConfig,
+    logger: Logger,
+    privateKey?: string,
+    oneInchApi?: OneInchApiService
+  ) {
     super(config, logger);
 
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    this.oneInchApi = oneInchApi;
 
     if (privateKey) {
       this.wallet = new ethers.Wallet(privateKey, this.provider);
@@ -66,7 +74,27 @@ export class EVMChainAdapter extends BaseChainAdapter {
 
       let balance: bigint;
 
-      if (token && token !== "ETH") {
+      // Use 1inch API if available and chain is supported
+      if (
+        this.oneInchApi &&
+        this.oneInchApi.isChainSupported(this.config.chainId) &&
+        token === "ETH"
+      ) {
+        try {
+          const balanceHex = await this.oneInchApi.getBalance(
+            this.config.chainId,
+            address
+          );
+          balance = BigInt(balanceHex);
+        } catch (error) {
+          this.logger.warn("1inch API failed, falling back to direct RPC", {
+            chainId: this.config.chainId,
+            error: (error as Error).message,
+          });
+          balance = await this.provider.getBalance(address);
+        }
+      } else if (token && token !== "ETH") {
+        // For ERC20 tokens, still use direct provider for now
         const tokenContract = new ethers.Contract(
           token,
           ERC20_ABI,
@@ -96,7 +124,26 @@ export class EVMChainAdapter extends BaseChainAdapter {
         return false;
       }
 
-      const code = await this.provider.getCode(address);
+      let code: string;
+
+      // Use 1inch API if available and chain is supported
+      if (
+        this.oneInchApi &&
+        this.oneInchApi.isChainSupported(this.config.chainId)
+      ) {
+        try {
+          code = await this.oneInchApi.getCode(this.config.chainId, address);
+        } catch (error) {
+          this.logger.warn("1inch API failed, falling back to direct RPC", {
+            chainId: this.config.chainId,
+            error: (error as Error).message,
+          });
+          code = await this.provider.getCode(address);
+        }
+      } else {
+        code = await this.provider.getCode(address);
+      }
+
       const isDeployed = code !== "0x";
 
       this.logOperation("checkContractDeployment", { address }, isDeployed);
@@ -267,7 +314,29 @@ export class EVMChainAdapter extends BaseChainAdapter {
 
   async getBlockNumber(): Promise<number> {
     try {
-      const blockNumber = await this.provider.getBlockNumber();
+      let blockNumber: number;
+
+      // Use 1inch API if available and chain is supported
+      if (
+        this.oneInchApi &&
+        this.oneInchApi.isChainSupported(this.config.chainId)
+      ) {
+        try {
+          const blockNumberHex = await this.oneInchApi.getBlockNumber(
+            this.config.chainId
+          );
+          blockNumber = parseInt(blockNumberHex, 16);
+        } catch (error) {
+          this.logger.warn("1inch API failed, falling back to direct RPC", {
+            chainId: this.config.chainId,
+            error: (error as Error).message,
+          });
+          blockNumber = await this.provider.getBlockNumber();
+        }
+      } else {
+        blockNumber = await this.provider.getBlockNumber();
+      }
+
       this.logOperation("getBlockNumber", {}, blockNumber);
       return blockNumber;
     } catch (error) {
