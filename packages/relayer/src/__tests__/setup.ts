@@ -2,16 +2,41 @@
 process.env.NODE_ENV = "test";
 process.env.LOG_LEVEL = "error";
 process.env.SUPPORTED_CHAINS = "ethereum,near";
-process.env.MAX_ACTIVE_ORDERS = "10";
 process.env.ENABLE_PARTIAL_FILLS = "true";
 
 // Mock logger for testing
 export const mockLogger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-};
+  debug: jest.fn(),
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  // Additional Winston Logger properties to satisfy type checking
+  silent: false,
+  format: {} as any,
+  levels: {} as any,
+  level: "info",
+  transports: [] as any,
+  add: jest.fn(),
+  remove: jest.fn(),
+  clear: jest.fn(),
+  close: jest.fn(),
+  configure: jest.fn(),
+  child: jest.fn(),
+  startTimer: jest.fn(),
+  profile: jest.fn(),
+  query: jest.fn(),
+  stream: jest.fn(),
+  write: jest.fn(),
+  exceptions: {} as any,
+  rejections: {} as any,
+  exitOnError: true,
+  profilers: {} as any,
+  _readableState: undefined,
+  _writableState: undefined,
+  readable: false,
+  writable: false,
+  destroyed: false,
+} as any;
 
 export const createMockOrder = () => ({
   orderHash:

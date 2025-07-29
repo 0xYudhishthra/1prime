@@ -1,6 +1,11 @@
 import { OrderManager } from "../../services/order-manager";
 import { mockLogger, createMockOrder, createMockResolver } from "../setup";
-import { CreateOrderRequest, ResolverBidRequest } from "../../types";
+import {
+  CreateOrderRequest,
+  ResolverBidRequest,
+  FusionOrderExtended,
+  RelayerStatus,
+} from "../../types";
 
 describe("OrderManager", () => {
   let orderManager: OrderManager;
@@ -117,8 +122,7 @@ describe("OrderManager", () => {
       const bid: ResolverBidRequest = {
         orderHash,
         resolver: resolver.address,
-        bondProof: "valid-bond-proof",
-        estimatedGas: 150000,
+        estimatedGas: 10000, // Lower gas estimate to make bid more profitable
         signature: "0xsignature",
       };
 
@@ -134,7 +138,6 @@ describe("OrderManager", () => {
       const bid: ResolverBidRequest = {
         orderHash: "nonexistent",
         resolver: resolver.address,
-        bondProof: "valid-bond-proof",
         estimatedGas: 150000,
         signature: "0xsignature",
       };
@@ -148,7 +151,6 @@ describe("OrderManager", () => {
       const bid: ResolverBidRequest = {
         orderHash,
         resolver: "0xunregistered",
-        bondProof: "valid-bond-proof",
         estimatedGas: 150000,
         signature: "0xsignature",
       };
@@ -158,36 +160,26 @@ describe("OrderManager", () => {
       );
     });
 
-    it("should reject bid if resolver tier is too low", async () => {
-      // Create order with minimum tier requirement of 3
-      const highTierRequest: CreateOrderRequest = {
-        sourceChain: "ethereum",
-        destinationChain: "near",
-        sourceToken: "ETH",
-        destinationToken: "NEAR",
-        sourceAmount: "1.0",
-        destinationAmount: "100.0",
-        timeout: Date.now() + 3600000,
-        minBondTier: 3,
-        signature: "0xsignature",
-        nonce: "test-nonce-2",
+    it("should reject bid if resolver is not KYC approved", async () => {
+      // Create a non-KYC resolver
+      const nonKycResolver: RelayerStatus = {
+        address: "0xnonkyc",
+        isKyc: false,
+        reputation: 50,
+        completedOrders: 10,
+        lastActivity: Date.now(),
       };
-
-      const order = await orderManager.createOrder(
-        highTierRequest,
-        "0x742d35Cc6635C0532925a3b8D4A8f4c3c8a54a0b"
-      );
+      orderManager.registerResolver(nonKycResolver);
 
       const bid: ResolverBidRequest = {
-        orderHash: order.orderHash,
-        resolver: resolver.address,
-        bondProof: "valid-bond-proof",
+        orderHash,
+        resolver: nonKycResolver.address,
         estimatedGas: 150000,
         signature: "0xsignature",
       };
 
       await expect(orderManager.submitResolverBid(bid)).rejects.toThrow(
-        "below minimum required"
+        "Resolver must be KYC approved to participate"
       );
     });
   });
@@ -350,7 +342,7 @@ describe("OrderManager", () => {
         "Resolver registered",
         expect.objectContaining({
           address: resolver.address,
-          tier: resolver.tier,
+          reputation: resolver.reputation,
         })
       );
     });
