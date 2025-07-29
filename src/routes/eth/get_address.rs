@@ -32,3 +32,13 @@ pub async fn get_funding_eth_address() -> String{
     let eth_address = &hash[12..];
     format!("0x{}",hex::encode(eth_address))
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_funding_eth_address() {
+        let result = get_funding_eth_address().await;
+        assert_eq!(result, "0x28bff41b990348624a1d4e057b8f0fe94e75830d");
+    }
+}
