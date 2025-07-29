@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { RelayerService, RelayerServiceConfig } from "./services/relayer";
 import { DatabaseService, DatabaseConfig } from "./services/database";
 import { WebSocketService } from "./services/websocket-service";
+import { OneInchApiService, OneInchApiConfig } from "./services/1inch-api";
 import { createRelayerRoutes } from "./api/routes";
 import { RelayerConfig } from "./types";
 
@@ -90,10 +91,26 @@ class RelayerApplication {
   private relayerService: RelayerService;
   private databaseService: DatabaseService;
   private webSocketService: WebSocketService;
+  private oneInchApiService?: OneInchApiService;
   private server?: any;
 
   constructor() {
     this.app = express();
+
+    // Initialize 1inch API service if API key is provided
+    if (process.env.ONEINCH_API_KEY) {
+      const oneInchConfig: OneInchApiConfig = {
+        apiKey: process.env.ONEINCH_API_KEY,
+        baseUrl: process.env.ONEINCH_API_URL || "https://web3.1inch.dev",
+        timeout: parseInt(process.env.ONEINCH_API_TIMEOUT || "10000", 10),
+      };
+      this.oneInchApiService = new OneInchApiService(oneInchConfig, logger);
+      logger.info("1inch API service initialized", {
+        baseUrl: oneInchConfig.baseUrl,
+      });
+    } else {
+      logger.warn("1inch API key not provided, using direct RPC calls");
+    }
 
     // Initialize database service
     this.databaseService = new DatabaseService(config.database, logger);
@@ -101,11 +118,12 @@ class RelayerApplication {
     // Initialize WebSocket service
     this.webSocketService = new WebSocketService(logger);
 
-    // Initialize relayer service with database
+    // Initialize relayer service with database and 1inch API
     this.relayerService = new RelayerService(
       logger,
       relayerServiceConfig,
-      this.databaseService
+      this.databaseService,
+      this.oneInchApiService
     );
 
     this.setupMiddleware();

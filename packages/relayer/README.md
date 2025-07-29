@@ -82,7 +82,8 @@ Edit `.env` with your configuration. Key variables include:
 
 - `SUPABASE_URL` and `SUPABASE_ANON_KEY` for database
 - `EVM_PRIVATE_KEY` and `NEAR_PRIVATE_KEY` for transaction signing
-- RPC URLs for supported chains
+- `ONEINCH_API_KEY` for optimized RPC usage (optional)
+- RPC URLs for supported chains (fallback when 1inch API not available)
 - `PORT` and `LOG_LEVEL` for server configuration
 
 See `env.example` for the complete list of required environment variables.
