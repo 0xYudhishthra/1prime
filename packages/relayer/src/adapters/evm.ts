@@ -37,7 +37,6 @@ const ERC20_ABI = [
 
 export class EVMChainAdapter extends BaseChainAdapter {
   private provider!: Provider;
-  private htlcContract!: Contract;
   private wallet?: Wallet;
 
   constructor(config: ChainConfig, logger: Logger, privateKey?: string) {
@@ -48,9 +47,12 @@ export class EVMChainAdapter extends BaseChainAdapter {
     if (privateKey) {
       this.wallet = new ethers.Wallet(privateKey, this.provider);
     }
+  }
 
-    this.htlcContract = new ethers.Contract(
-      config.contractAddresses.htlc,
+  // Create HTLC contract instance dynamically with given address
+  private getHTLCContract(contractAddress: string): Contract {
+    return new ethers.Contract(
+      contractAddress,
       HTLC_ABI,
       this.wallet || this.provider
     );
@@ -120,7 +122,22 @@ export class EVMChainAdapter extends BaseChainAdapter {
         throw new Error(`Invalid resolver address: ${resolver}`);
       }
 
-      const tx = await this.htlcContract.createHTLC(
+      // HTLC contract address should be provided in the order
+      let htlcContractAddress: string;
+      if (this.config.chainId === order.sourceChain) {
+        htlcContractAddress = order.sourceChainHtlcAddress || "";
+      } else {
+        htlcContractAddress = order.destinationChainHtlcAddress || "";
+      }
+
+      if (!htlcContractAddress) {
+        throw new Error(
+          `HTLC contract address not set for chain ${this.config.chainId}`
+        );
+      }
+
+      const htlcContract = this.getHTLCContract(htlcContractAddress);
+      const tx = await htlcContract.createHTLC(
         order.secretHash,
         order.timeout,
         resolver,
@@ -132,7 +149,7 @@ export class EVMChainAdapter extends BaseChainAdapter {
 
       this.logOperation(
         "createEscrow",
-        { orderHash: order.orderHash, resolver },
+        { orderHash: order.orderHash, resolver, htlcContractAddress },
         receipt.hash
       );
       return receipt.hash;
@@ -147,14 +164,18 @@ export class EVMChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async verifyEscrow(orderHash: string): Promise<EscrowDetails> {
+  async verifyEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<EscrowDetails> {
     try {
-      const htlcDetails = await this.htlcContract.getHTLCDetails(orderHash);
+      const htlcContract = this.getHTLCContract(htlcContractAddress);
+      const htlcDetails = await htlcContract.getHTLCDetails(orderHash);
 
       const escrowDetails: EscrowDetails = {
         orderHash,
         chain: this.config.name,
-        contractAddress: this.config.contractAddresses.htlc,
+        contractAddress: htlcContractAddress,
         secretHash: htlcDetails.secretHash,
         amount: htlcDetails.amount.toString(),
         timeout: Number(htlcDetails.timeout),
@@ -166,12 +187,16 @@ export class EVMChainAdapter extends BaseChainAdapter {
         createdAt: Number(htlcDetails.createdAt),
       };
 
-      this.logOperation("verifyEscrow", { orderHash }, escrowDetails);
+      this.logOperation(
+        "verifyEscrow",
+        { orderHash, htlcContractAddress },
+        escrowDetails
+      );
       return escrowDetails;
     } catch (error) {
       this.logOperation(
         "verifyEscrow",
-        { orderHash },
+        { orderHash, htlcContractAddress },
         undefined,
         error as Error
       );
@@ -179,21 +204,30 @@ export class EVMChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async withdrawFromEscrow(orderHash: string, secret: string): Promise<string> {
+  async withdrawFromEscrow(
+    orderHash: string,
+    secret: string,
+    htlcContractAddress: string
+  ): Promise<string> {
     if (!this.wallet) {
       throw new Error("Wallet not configured for transaction signing");
     }
 
     try {
-      const tx = await this.htlcContract.claimHTLC(orderHash, secret);
+      const htlcContract = this.getHTLCContract(htlcContractAddress);
+      const tx = await htlcContract.claimHTLC(orderHash, secret);
       const receipt = await tx.wait();
 
-      this.logOperation("withdrawFromEscrow", { orderHash }, receipt.hash);
+      this.logOperation(
+        "withdrawFromEscrow",
+        { orderHash, htlcContractAddress },
+        receipt.hash
+      );
       return receipt.hash;
     } catch (error) {
       this.logOperation(
         "withdrawFromEscrow",
-        { orderHash },
+        { orderHash, htlcContractAddress },
         undefined,
         error as Error
       );
@@ -201,21 +235,29 @@ export class EVMChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async cancelEscrow(orderHash: string): Promise<string> {
+  async cancelEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<string> {
     if (!this.wallet) {
       throw new Error("Wallet not configured for transaction signing");
     }
 
     try {
-      const tx = await this.htlcContract.refundHTLC(orderHash);
+      const htlcContract = this.getHTLCContract(htlcContractAddress);
+      const tx = await htlcContract.refundHTLC(orderHash);
       const receipt = await tx.wait();
 
-      this.logOperation("cancelEscrow", { orderHash }, receipt.hash);
+      this.logOperation(
+        "cancelEscrow",
+        { orderHash, htlcContractAddress },
+        receipt.hash
+      );
       return receipt.hash;
     } catch (error) {
       this.logOperation(
         "cancelEscrow",
-        { orderHash },
+        { orderHash, htlcContractAddress },
         undefined,
         error as Error
       );
@@ -253,13 +295,23 @@ export class EVMChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async estimateGas(operation: string, params: any): Promise<number> {
+  async estimateGas(
+    operation: string,
+    params: any,
+    htlcContractAddress?: string
+  ): Promise<number> {
     try {
       let gasEstimate: bigint;
 
+      if (!htlcContractAddress) {
+        throw new Error("HTLC contract address is required for gas estimation");
+      }
+
+      const htlcContract = this.getHTLCContract(htlcContractAddress);
+
       switch (operation) {
         case "createEscrow":
-          gasEstimate = await this.htlcContract.createHTLC.estimateGas(
+          gasEstimate = await htlcContract.createHTLC.estimateGas(
             params.secretHash,
             params.timeout,
             params.resolver,
@@ -268,13 +320,13 @@ export class EVMChainAdapter extends BaseChainAdapter {
           );
           break;
         case "withdraw":
-          gasEstimate = await this.htlcContract.claimHTLC.estimateGas(
+          gasEstimate = await htlcContract.claimHTLC.estimateGas(
             params.orderHash,
             params.secret
           );
           break;
         case "cancel":
-          gasEstimate = await this.htlcContract.refundHTLC.estimateGas(
+          gasEstimate = await htlcContract.refundHTLC.estimateGas(
             params.orderHash
           );
           break;

@@ -147,8 +147,22 @@ export class NEARChainAdapter extends BaseChainAdapter {
         throw new Error(`Invalid amount: ${order.sourceAmount}`);
       }
 
+      // HTLC contract address should be provided in the order
+      let htlcContractAddress: string;
+      if (this.config.chainId === order.sourceChain) {
+        htlcContractAddress = order.sourceChainHtlcAddress || "";
+      } else {
+        htlcContractAddress = order.destinationChainHtlcAddress || "";
+      }
+
+      if (!htlcContractAddress) {
+        throw new Error(
+          `HTLC contract address not set for chain ${this.config.chainId}`
+        );
+      }
+
       const outcome = await this.account.functionCall({
-        contractId: this.config.contractAddresses.htlc,
+        contractId: htlcContractAddress,
         methodName: "create_htlc",
         args: {
           secret_hash: order.secretHash,
@@ -179,18 +193,19 @@ export class NEARChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async verifyEscrow(orderHash: string): Promise<EscrowDetails> {
+  async verifyEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<EscrowDetails> {
     try {
       if (!this.connection) {
         await this.initializeConnection();
       }
 
-      const account = await this.connection!.account(
-        this.config.contractAddresses.htlc
-      );
+      const account = await this.connection!.account(htlcContractAddress);
 
       const htlcDetails = await account.viewFunction({
-        contractId: this.config.contractAddresses.htlc,
+        contractId: htlcContractAddress,
         methodName: "get_htlc_details",
         args: { order_hash: orderHash },
       });
@@ -198,7 +213,7 @@ export class NEARChainAdapter extends BaseChainAdapter {
       const escrowDetails: EscrowDetails = {
         orderHash,
         chain: this.config.name,
-        contractAddress: this.config.contractAddresses.htlc,
+        contractAddress: htlcContractAddress,
         secretHash: htlcDetails.secret_hash,
         amount: htlcDetails.amount,
         timeout: parseInt(htlcDetails.timeout),
@@ -210,12 +225,16 @@ export class NEARChainAdapter extends BaseChainAdapter {
         createdAt: parseInt(htlcDetails.created_at),
       };
 
-      this.logOperation("verifyEscrow", { orderHash }, escrowDetails);
+      this.logOperation(
+        "verifyEscrow",
+        { orderHash, htlcContractAddress },
+        escrowDetails
+      );
       return escrowDetails;
     } catch (error) {
       this.logOperation(
         "verifyEscrow",
-        { orderHash },
+        { orderHash, htlcContractAddress },
         undefined,
         error as Error
       );
@@ -223,14 +242,18 @@ export class NEARChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async withdrawFromEscrow(orderHash: string, secret: string): Promise<string> {
+  async withdrawFromEscrow(
+    orderHash: string,
+    secret: string,
+    htlcContractAddress: string
+  ): Promise<string> {
     if (!this.account) {
       throw new Error("NEAR account not configured for transaction signing");
     }
 
     try {
       const outcome = await this.account.functionCall({
-        contractId: this.config.contractAddresses.htlc,
+        contractId: htlcContractAddress,
         methodName: "claim_htlc",
         args: {
           order_hash: orderHash,
@@ -241,12 +264,16 @@ export class NEARChainAdapter extends BaseChainAdapter {
 
       const transactionHash = outcome.transaction.hash;
 
-      this.logOperation("withdrawFromEscrow", { orderHash }, transactionHash);
+      this.logOperation(
+        "withdrawFromEscrow",
+        { orderHash, htlcContractAddress },
+        transactionHash
+      );
       return transactionHash;
     } catch (error) {
       this.logOperation(
         "withdrawFromEscrow",
-        { orderHash },
+        { orderHash, htlcContractAddress },
         undefined,
         error as Error
       );
@@ -254,14 +281,17 @@ export class NEARChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async cancelEscrow(orderHash: string): Promise<string> {
+  async cancelEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<string> {
     if (!this.account) {
       throw new Error("NEAR account not configured for transaction signing");
     }
 
     try {
       const outcome = await this.account.functionCall({
-        contractId: this.config.contractAddresses.htlc,
+        contractId: htlcContractAddress,
         methodName: "refund_htlc",
         args: {
           order_hash: orderHash,
@@ -271,12 +301,16 @@ export class NEARChainAdapter extends BaseChainAdapter {
 
       const transactionHash = outcome.transaction.hash;
 
-      this.logOperation("cancelEscrow", { orderHash }, transactionHash);
+      this.logOperation(
+        "cancelEscrow",
+        { orderHash, htlcContractAddress },
+        transactionHash
+      );
       return transactionHash;
     } catch (error) {
       this.logOperation(
         "cancelEscrow",
-        { orderHash },
+        { orderHash, htlcContractAddress },
         undefined,
         error as Error
       );
@@ -320,10 +354,15 @@ export class NEARChainAdapter extends BaseChainAdapter {
     }
   }
 
-  async estimateGas(operation: string, params: any): Promise<number> {
+  async estimateGas(
+    operation: string,
+    params: any,
+    htlcContractAddress?: string
+  ): Promise<number> {
     try {
       let gasEstimate: number;
 
+      // NEAR gas estimation is based on operation type, not contract address
       switch (operation) {
         case "createEscrow":
           gasEstimate = this.config.gasLimit.htlcCreation;

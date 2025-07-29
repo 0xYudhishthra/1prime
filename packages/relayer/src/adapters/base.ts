@@ -21,20 +21,31 @@ export abstract class BaseChainAdapter implements ChainAdapter {
 
   abstract createEscrow(order: FusionOrder, resolver: string): Promise<string>;
 
-  abstract verifyEscrow(orderHash: string): Promise<EscrowDetails>;
+  abstract verifyEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<EscrowDetails>;
 
   abstract withdrawFromEscrow(
     orderHash: string,
-    secret: string
+    secret: string,
+    htlcContractAddress: string
   ): Promise<string>;
 
-  abstract cancelEscrow(orderHash: string): Promise<string>;
+  abstract cancelEscrow(
+    orderHash: string,
+    htlcContractAddress: string
+  ): Promise<string>;
 
   abstract getBlockNumber(): Promise<number>;
 
   abstract getTransaction(hash: string): Promise<any>;
 
-  abstract estimateGas(operation: string, params: any): Promise<number>;
+  abstract estimateGas(
+    operation: string,
+    params: any,
+    htlcContractAddress?: string
+  ): Promise<number>;
 
   protected logOperation(
     operation: string,
@@ -78,7 +89,7 @@ export abstract class BaseChainAdapter implements ChainAdapter {
       type: this.config.type,
       blockTime: this.config.blockTime,
       finalityBlocks: this.config.finalityBlocks,
-      contractAddresses: this.config.contractAddresses,
+      // Note: HTLC contracts are deployed dynamically per swap
     };
   }
 }
