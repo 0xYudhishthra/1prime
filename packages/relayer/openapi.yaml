@@ -1,0 +1,1184 @@
+openapi: 3.0.3
+info:
+  title: 1Prime Relayer Service API
+  description: |
+    A 1inch Fusion+ compatible relayer service that facilitates cross-chain atomic swaps between EVM chains (Ethereum, Base, BSC, Polygon, Arbitrum) and NEAR Protocol.
+
+    This implementation follows the 1inch Fusion+ whitepaper architecture with per-swap HTLC deployment for secure cross-chain atomic swaps.
+
+    ## Features
+    - Dutch Auction Management with gas-adjusted custom curves
+    - Partial Fill Support with Merkle tree-based N+1 secret management  
+    - Cross-chain Escrow Verification
+    - Real-time WebSocket updates
+    - Modular chain support for EVM and NEAR
+
+    ## Supported Chain Pairs
+    - Ethereum ↔ NEAR
+    - Base ↔ NEAR
+    - BSC ↔ NEAR
+    - Polygon ↔ NEAR
+    - Arbitrum ↔ NEAR
+  version: 1.0.0
+  contact:
+    name: 1Prime Team
+    url: https://github.com/unite-defi
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development server
+  - url: https://1prime-relayer.up.railway.app/api/v1
+    description: Production server (Railway)
+
+paths:
+  /:
+    get:
+      summary: API Documentation
+      description: Get comprehensive API documentation and available endpoints
+      operationId: getApiDocumentation
+      tags:
+        - Documentation
+      responses:
+        "200":
+          description: API documentation retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  service: "1Prime Relayer Service"
+                  version: "1.0.0"
+                  description: "1inch Fusion+ compatible relayer for EVM ↔ NEAR cross-chain atomic swaps"
+                  documentation: "https://github.com/unite-defi"
+                  whitepaper: "https://1inch.io/assets/1inch-fusion-plus.pdf"
+                  timestamp: 1640995200000
+                  status: "active"
+                  websocket:
+                    enabled: true
+                    endpoint: "/ws"
+                    events:
+                      [
+                        "order_updates",
+                        "auction_progress",
+                        "partial_fills",
+                        "gas_adjustments",
+                      ]
+                  endpoints:
+                    "GET /health": "Get relayer health status and chain connectivity"
+                    "POST /orders": "Create new cross-chain swap order (supports legacy and SDK formats)"
+                    "GET /orders": "Get all currently active orders"
+                    "GET /orders/{orderHash}": "Get order status and details"
+                    "POST /bids": "Submit resolver bid for order execution"
+                    "POST /secrets/reveal": "Request secret revelation for order completion"
+                    "POST /resolvers": "Register new resolver for order execution"
+                    "GET /auctions/{orderHash}": "Get auction information for specific order"
+                    "GET /stats": "Get system statistics and performance metrics"
+                    "GET /gas-summary": "Get current gas conditions and adjustment statistics"
+                    "GET /auction-stats": "Get Dutch auction performance metrics"
+                    "GET /ws-info": "Get WebSocket connection details and supported events"
+                  features:
+                    "Dutch Auctions": "Competitive bidding with gas-adjusted custom curves"
+                    "Partial Fills": "N+1 Merkle tree secret management"
+                    "Gas Adjustments": "Dynamic rate modifications based on network conditions"
+                    "Per-Swap HTLCs": "Dynamic contract deployment for each swap"
+                    "Cross-Chain": "EVM ↔ NEAR bidirectional atomic swaps"
+                    "SDK Integration": "Native support for 1inch Fusion+ SDK orders"
+                    "Real-time Updates": "WebSocket support for live order tracking"
+                  supportedChains:
+                    evm: ["ethereum", "base", "bsc", "polygon", "arbitrum"]
+                    near: ["near", "near-testnet"]
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /health:
+    get:
+      summary: Health Check
+      description: Returns the health status of the relayer service and all connected chains
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthCheckResponse"
+              example:
+                status: "healthy"
+                timestamp: 1640995200000
+                version: "1.0.0"
+                chains:
+                  ethereum:
+                    connected: true
+                    blockNumber: 18500000
+                    latency: 120
+                  near:
+                    connected: true
+                    blockNumber: 105000000
+                    latency: 80
+                activeOrders: 12
+                completedOrders: 1543
+                errorRate: 0.02
+
+  /orders:
+    get:
+      summary: Get Active Orders
+      description: Retrieve all currently active orders
+      operationId: getActiveOrders
+      tags:
+        - Orders
+      responses:
+        "200":
+          description: Active orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  - orderHash: "0x123..."
+                    maker: "0xabc..."
+                    sourceChain: "ethereum"
+                    destinationChain: "near"
+                    sourceAmount: "1000000000000000000"
+                    destinationAmount: "100000000000000000000000000"
+                    phase: "announcement"
+                  - orderHash: "0x456..."
+                    maker: "0xdef..."
+                    sourceChain: "base"
+                    destinationChain: "near"
+                    sourceAmount: "500000000000000000"
+                    destinationAmount: "50000000000000000000000000"
+                    phase: "deposit"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      summary: Create Order
+      description: |
+        Create a new cross-chain swap order. Supports both legacy format (backward compatible) and SDK format (enhanced features).
+
+        **Legacy Format**: Simple cross-chain swap with basic auction mechanics
+        **SDK Format**: Advanced features including partial fills, custom curves, and Merkle tree secrets
+      operationId: createOrder
+      tags:
+        - Orders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/LegacyOrderRequest"
+                - $ref: "#/components/schemas/SDKOrderRequest"
+            examples:
+              legacy:
+                summary: Legacy Order Format
+                value:
+                  sourceChain: "ethereum"
+                  destinationChain: "near"
+                  sourceToken: "ETH"
+                  destinationToken: "NEAR"
+                  sourceAmount: "1000000000000000000"
+                  destinationAmount: "100000000000000000000000000"
+                  timeout: 1640995200000
+                  signature: "0x..."
+                  nonce: "unique-nonce-123"
+              sdk:
+                summary: SDK Order Format
+                value:
+                  sdkOrder:
+                    orderInfo:
+                      srcChainId: "1"
+                      dstChainId: "near"
+                      srcToken: "0x..."
+                      dstToken: "near"
+                      srcAmount: "1000000000000000000"
+                      dstAmount: "100000000000000000000000000"
+                    auctionDetails:
+                      points:
+                        - delay: 0
+                          coefficient: 1.0
+                        - delay: 60
+                          coefficient: 0.5
+                        - delay: 120
+                          coefficient: 0.0
+                    settlementInfo:
+                      hashLock:
+                        merkleRoot: "0x..."
+                        merkleLeaves: ["0x...", "0x...", "0x..."]
+                        secretHash: "0x..."
+                  signature: "0x..."
+      parameters:
+        - name: x-maker-address
+          in: header
+          description: Maker address (required for legacy format)
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x742d35Cc6B3e6F1b8e0A8D6d1e5E"
+      responses:
+        "201":
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  orderHash: "0x123..."
+                  status: "announcement"
+                  phase: "announcement"
+                  auction:
+                    startTime: 1640995200000
+                    duration: 300000
+                    isActive: true
+                timestamp: 1640995200000
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /orders/{orderHash}:
+    get:
+      summary: Get Order Status
+      description: Retrieve the current status and details of a specific order
+      operationId: getOrderStatus
+      tags:
+        - Orders
+      parameters:
+        - name: orderHash
+          in: path
+          required: true
+          description: Unique hash identifier of the order
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          example: "0x123abc..."
+      responses:
+        "200":
+          description: Order status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  orderHash: "0x123..."
+                  phase: "deposit"
+                  sourceEscrow:
+                    orderHash: "0x123..."
+                    chain: "ethereum"
+                    contractAddress: "0xabc..."
+                    amount: "1000000000000000000"
+                    isCreated: true
+                  destinationEscrow:
+                    orderHash: "0x123..."
+                    chain: "near"
+                    contractAddress: "htlc.near"
+                    amount: "100000000000000000000000000"
+                    isCreated: true
+                  auction:
+                    startTime: 1640995200000
+                    currentRate: 0.85
+                    isActive: false
+                    winner: "0xdef..."
+                  isCompleted: false
+                timestamp: 1640995200000
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /bids:
+    post:
+      summary: Submit Resolver Bid
+      description: Submit a bid for an active auction as a KYC'd resolver
+      operationId: submitResolverBid
+      tags:
+        - Resolvers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolverBidRequest"
+            example:
+              orderHash: "0x123..."
+              resolver: "0xdef..."
+              estimatedGas: 150000
+              signature: "0x..."
+      responses:
+        "200":
+          description: Bid submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  bidAccepted: true
+                  auctionWon: true
+                  finalRate: 0.85
+                timestamp: 1640995200000
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Resolver not authorized (KYC required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Resolver must be KYC verified"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /secrets/reveal:
+    post:
+      summary: Request Secret Reveal
+      description: Request revelation of order secret after escrow verification and finality
+      operationId: requestSecretReveal
+      tags:
+        - Secrets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecretRevealRequest"
+            example:
+              orderHash: "0x123..."
+              secret: "secret-value-123"
+              proof: "merkle-proof-string"
+              signature: "0x..."
+      responses:
+        "200":
+          description: Secret reveal processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  secretRevealed: true
+                  revealedTo: "0xdef..."
+                timestamp: 1640995200000
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Conditions not met for secret reveal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Escrow verification not complete"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /resolvers:
+    post:
+      summary: Register Resolver
+      description: Register a new resolver with KYC and reputation information
+      operationId: registerResolver
+      tags:
+        - Resolvers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterResolverRequest"
+            example:
+              address: "0xdef..."
+              isKyc: true
+              bondAmount: "1000000000000000000000"
+              tier: 2
+              reputation: 95
+      responses:
+        "201":
+          description: Resolver registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  address: "0xdef..."
+                  registered: true
+                timestamp: 1640995200000
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Resolver already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Resolver already registered"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /partial-fills:
+    post:
+      summary: Submit Partial Fill
+      description: Submit a partial fill for an order that supports multiple fills (Not yet implemented - requires PartialFillManager integration)
+      operationId: submitPartialFill
+      tags:
+        - Partial Fills
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartialFillRequest"
+            example:
+              orderHash: "0x123..."
+              resolver: "0xdef..."
+              fillAmount: "25000000000000000000000000"
+              proposedSecretIndex: 2
+              signature: "0x..."
+      responses:
+        "200":
+          description: Partial fill endpoint not yet implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Partial fill endpoint not yet implemented - requires PartialFillManager integration"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /partial-fills/{orderHash}:
+    get:
+      summary: Get Partial Fill Status
+      description: Retrieve partial fill status and history for an order (Not yet implemented - requires PartialFillManager integration)
+      operationId: getPartialFillStatus
+      tags:
+        - Partial Fills
+      parameters:
+        - name: orderHash
+          in: path
+          required: true
+          description: Unique hash identifier of the order
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          example: "0x123abc..."
+      responses:
+        "200":
+          description: Partial fill status endpoint not yet implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Partial fill status endpoint not yet implemented - requires PartialFillManager integration"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auctions/{orderHash}:
+    get:
+      summary: Get Auction Information
+      description: Retrieve detailed auction information for a specific order
+      operationId: getAuctionInfo
+      tags:
+        - Orders
+      parameters:
+        - name: orderHash
+          in: path
+          required: true
+          description: Unique hash identifier of the order
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{64}$"
+          example: "0x123abc..."
+      responses:
+        "200":
+          description: Auction information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  orderHash: "0x123..."
+                  startTime: 1640995200000
+                  duration: 300000
+                  initialRateBump: 1000
+                  currentRate: 0.85
+                  isActive: true
+                  participatingResolvers: ["0xabc...", "0xdef..."]
+                  winner: "0xdef..."
+                  finalRate: 0.82
+                timestamp: 1640995200000
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /stats:
+    get:
+      summary: Get System Statistics
+      description: Retrieve overall system statistics and performance metrics
+      operationId: getSystemStats
+      tags:
+        - Health
+      responses:
+        "200":
+          description: System statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  activeOrders: 12
+                  completedOrders: 1543
+                  totalVolume: "50000000000000000000000"
+                  errorRate: 0.02
+                  uptime: 86400000
+                  chains:
+                    ethereum:
+                      connected: true
+                      blockNumber: 18500000
+                      latency: 120
+                    near:
+                      connected: true
+                      blockNumber: 105000000
+                      latency: 80
+                  performance:
+                    avgOrderCompletionTime: 600000
+                    avgAuctionDuration: 120000
+                    resolverCount: 25
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /gas-summary:
+    get:
+      summary: Get Gas Summary
+      description: Get current gas conditions and adjustment statistics (Not yet implemented - requires CustomCurveManager integration)
+      operationId: getGasSummary
+      tags:
+        - Gas Monitoring
+      responses:
+        "200":
+          description: Gas summary endpoint not yet implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Gas summary endpoint not yet implemented - requires CustomCurveManager integration"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auction-stats:
+    get:
+      summary: Get Auction Statistics
+      description: Get Dutch auction performance metrics (Not yet implemented - requires OrderManager statistics integration)
+      operationId: getAuctionStats
+      tags:
+        - Orders
+      responses:
+        "200":
+          description: Auction stats endpoint not yet implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: false
+                error: "Auction stats endpoint not yet implemented - requires OrderManager statistics integration"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /ws-info:
+    get:
+      summary: WebSocket Info
+      description: Get WebSocket connection details and supported events
+      operationId: getWebSocketInfo
+      tags:
+        - WebSocket
+      responses:
+        "200":
+          description: WebSocket information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                success: true
+                data:
+                  websocket:
+                    enabled: true
+                    endpoint: "/ws"
+                    port: 3001
+                    reconnectInterval: 5000
+                  supportedEvents:
+                    - "order_created"
+                    - "auction_started"
+                    - "auction_progress"
+                    - "gas_adjustment"
+                    - "partial_fill"
+                    - "auction_won"
+                    - "secret_revealed"
+                    - "order_completed"
+                    - "order_cancelled"
+                    - "phase_transition"
+                  usage:
+                    connection: "ws://localhost:3001/ws"
+                    authentication: "No authentication required"
+                    messageFormat: "JSON with event type and data"
+                timestamp: 1640995200000
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  schemas:
+    ApiResponse:
+      type: object
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation was successful
+        data:
+          type: object
+          description: Response data (present on success)
+        error:
+          type: string
+          description: Error message (present on failure)
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp of the response
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+        - chains
+        - activeOrders
+        - completedOrders
+        - errorRate
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          description: Overall service health status
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp
+        version:
+          type: string
+          description: Service version
+        chains:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              connected:
+                type: boolean
+              blockNumber:
+                type: integer
+              latency:
+                type: integer
+                description: Latency in milliseconds
+        activeOrders:
+          type: integer
+          description: Number of currently active orders
+        completedOrders:
+          type: integer
+          description: Total number of completed orders
+        errorRate:
+          type: number
+          format: float
+          description: Current error rate (0.0 to 1.0)
+
+    LegacyOrderRequest:
+      type: object
+      required:
+        - sourceChain
+        - destinationChain
+        - sourceToken
+        - destinationToken
+        - sourceAmount
+        - destinationAmount
+        - timeout
+        - signature
+        - nonce
+      properties:
+        sourceChain:
+          type: string
+          enum: [ethereum, base, bsc, polygon, arbitrum]
+          description: Source blockchain
+        destinationChain:
+          type: string
+          enum: [near]
+          description: Destination blockchain
+        sourceToken:
+          type: string
+          description: Source token symbol or address
+        destinationToken:
+          type: string
+          description: Destination token symbol or address
+        sourceAmount:
+          type: string
+          description: Amount to swap from source chain (in wei/smallest unit)
+        destinationAmount:
+          type: string
+          description: Expected amount on destination chain
+        timeout:
+          type: integer
+          format: int64
+          description: Order timeout timestamp
+        auctionDuration:
+          type: integer
+          description: Duration of auction in milliseconds (optional)
+        initialRateBump:
+          type: integer
+          description: Initial rate bump in basis points (optional)
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: Maker's signature
+        nonce:
+          type: string
+          description: Unique nonce for the order
+
+    SDKOrderRequest:
+      type: object
+      required:
+        - sdkOrder
+        - signature
+      properties:
+        sdkOrder:
+          type: object
+          description: SDK-formatted order with enhanced features
+          properties:
+            orderInfo:
+              type: object
+              properties:
+                srcChainId:
+                  type: string
+                dstChainId:
+                  type: string
+                srcToken:
+                  type: string
+                dstToken:
+                  type: string
+                srcAmount:
+                  type: string
+                dstAmount:
+                  type: string
+            auctionDetails:
+              type: object
+              properties:
+                points:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      delay:
+                        type: integer
+                      coefficient:
+                        type: number
+            settlementInfo:
+              type: object
+              properties:
+                hashLock:
+                  type: object
+                  properties:
+                    merkleRoot:
+                      type: string
+                    merkleLeaves:
+                      type: array
+                      items:
+                        type: string
+                    secretHash:
+                      type: string
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: Order signature
+
+    ResolverBidRequest:
+      type: object
+      required:
+        - orderHash
+        - resolver
+        - estimatedGas
+        - signature
+      properties:
+        orderHash:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Hash of the order to bid on
+        resolver:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: Resolver's address
+        estimatedGas:
+          type: integer
+          description: Estimated gas cost for execution
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: Resolver's signature
+
+    SecretRevealRequest:
+      type: object
+      required:
+        - orderHash
+        - secret
+        - proof
+        - signature
+      properties:
+        orderHash:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Hash of the order
+        secret:
+          type: string
+          description: Secret value for HTLC unlocking
+        proof:
+          type: string
+          description: Merkle proof (for partial fills) or verification proof
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: Requester's signature
+
+    RegisterResolverRequest:
+      type: object
+      required:
+        - address
+        - isKyc
+      properties:
+        address:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: Resolver's Ethereum address
+        isKyc:
+          type: boolean
+          description: Whether the resolver is KYC verified
+        bondAmount:
+          type: string
+          description: Bond amount staked by resolver (optional)
+        tier:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Resolver tier (1-5, optional)
+        reputation:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Reputation score (0-100, optional)
+
+    PartialFillRequest:
+      type: object
+      required:
+        - orderHash
+        - resolver
+        - fillAmount
+        - proposedSecretIndex
+        - signature
+      properties:
+        orderHash:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Hash of the order to partially fill
+        resolver:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: Resolver's address
+        fillAmount:
+          type: string
+          description: Amount to fill (in wei/smallest unit)
+        proposedSecretIndex:
+          type: integer
+          minimum: 1
+          description: Proposed secret index to use (1-based)
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: Resolver's signature
+
+    OrderStatus:
+      type: object
+      properties:
+        orderHash:
+          type: string
+        phase:
+          type: string
+          enum: [announcement, deposit, withdrawal, recovery]
+        sourceEscrow:
+          $ref: "#/components/schemas/EscrowDetails"
+        destinationEscrow:
+          $ref: "#/components/schemas/EscrowDetails"
+        auction:
+          $ref: "#/components/schemas/DutchAuctionState"
+        secret:
+          $ref: "#/components/schemas/SecretManagement"
+        timelock:
+          $ref: "#/components/schemas/TimelockPhase"
+        isCompleted:
+          type: boolean
+        error:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderEvent"
+
+    EscrowDetails:
+      type: object
+      properties:
+        orderHash:
+          type: string
+        chain:
+          type: string
+        contractAddress:
+          type: string
+        secretHash:
+          type: string
+        amount:
+          type: string
+        timeout:
+          type: integer
+        creator:
+          type: string
+        designated:
+          type: string
+        isCreated:
+          type: boolean
+        isWithdrawn:
+          type: boolean
+        isCancelled:
+          type: boolean
+        createdAt:
+          type: integer
+        withdrawnAt:
+          type: integer
+        cancelledAt:
+          type: integer
+        transactionHash:
+          type: string
+
+    DutchAuctionState:
+      type: object
+      properties:
+        orderHash:
+          type: string
+        startTime:
+          type: integer
+        duration:
+          type: integer
+        initialRateBump:
+          type: integer
+        currentRate:
+          type: number
+        isActive:
+          type: boolean
+        winner:
+          type: string
+        finalRate:
+          type: number
+        participatingResolvers:
+          type: array
+          items:
+            type: string
+
+    SecretManagement:
+      type: object
+      properties:
+        orderHash:
+          type: string
+        secret:
+          type: string
+        secretHash:
+          type: string
+        isRevealed:
+          type: boolean
+        revealedAt:
+          type: integer
+        revealedBy:
+          type: string
+        merkleTree:
+          $ref: "#/components/schemas/MerkleSecretTree"
+
+    MerkleSecretTree:
+      type: object
+      properties:
+        orderHash:
+          type: string
+        totalParts:
+          type: integer
+        secrets:
+          type: array
+          items:
+            type: string
+        merkleRoot:
+          type: string
+        partialFills:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartialFill"
+
+    PartialFill:
+      type: object
+      properties:
+        fillIndex:
+          type: integer
+        fillPercentage:
+          type: number
+        secretUsed:
+          type: string
+        resolver:
+          type: string
+        timestamp:
+          type: integer
+
+    TimelockPhase:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [announcement, deposit, withdrawal, recovery]
+        orderHash:
+          type: string
+        startTime:
+          type: integer
+        endTime:
+          type: integer
+        isActive:
+          type: boolean
+        nextPhase:
+          type: string
+
+    OrderEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            [
+              order_created,
+              auction_started,
+              escrow_created,
+              secret_revealed,
+              withdrawal_completed,
+              order_cancelled,
+              error,
+            ]
+        timestamp:
+          type: integer
+        data:
+          type: object
+        transactionHash:
+          type: string
+        blockNumber:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+          example:
+            success: false
+            error: "Invalid request parameters"
+            timestamp: 1640995200000
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+          example:
+            success: false
+            error: "Order not found"
+            timestamp: 1640995200000
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+          example:
+            success: false
+            error: "Internal server error"
+            timestamp: 1640995200000
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Optional JWT token for authenticated endpoints
+
+tags:
+  - name: Documentation
+    description: API documentation and service information
+  - name: Health
+    description: Service health and status monitoring
+  - name: Orders
+    description: Cross-chain swap order management
+  - name: Resolvers
+    description: Resolver registration and bidding
+  - name: Secrets
+    description: Secret management for HTLC unlocking
+  - name: Partial Fills
+    description: Partial order execution with Merkle trees (Not yet implemented)
+  - name: Gas Monitoring
+    description: Gas price monitoring and auction adjustments (Not yet implemented)
+  - name: WebSocket
+    description: Real-time event streaming
+
+externalDocs:
+  description: 1Prime Relayer Documentation
+  url: https://github.com/unite-defi/blob/main/packages/relayer/README.md
