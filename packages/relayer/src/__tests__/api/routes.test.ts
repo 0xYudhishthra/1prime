@@ -29,6 +29,15 @@ describe("Relayer API Routes", () => {
     app = express();
     app.use(express.json());
     app.use("/api/v1", createRelayerRoutes(mockRelayerService, mockLogger));
+
+    // Add 404 handler for unknown endpoints
+    app.use("*", (req, res) => {
+      res.status(404).json({
+        success: false,
+        error: "Endpoint not found",
+        timestamp: Date.now(),
+      });
+    });
   });
 
   describe("GET /health", () => {
@@ -429,11 +438,11 @@ describe("Relayer API Routes", () => {
 
     it("should return 404 for unknown endpoints", async () => {
       const response = await request(app)
-        .get("/api/v1/unknown-endpoint")
+        .get("/api/v1/definitely-does-not-exist-12345")
         .expect(404);
 
-      // Express default 404 handling doesn't use our createResponse format
-      expect(response.body).toBeDefined();
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe("Endpoint not found");
     });
   });
 });
