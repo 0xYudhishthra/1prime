@@ -232,3 +232,138 @@ export interface HealthCheckResponse {
   completedOrders: number;
   errorRate: number;
 }
+
+// SDK CrossChainOrder structure (incoming format)
+export interface SDKAddress {
+  val: string;
+}
+
+export interface SDKTimeLocks {
+  srcWithdrawal: bigint; // A1: Finality lock period (source)
+  srcPublicWithdrawal: bigint; // A2→A3: Resolver exclusive → Public access (source)
+  srcCancellation: bigint; // A4: Resolver cancellation period (source)
+  srcPublicCancellation: bigint; // A5: Public cancellation period (source)
+  dstWithdrawal: bigint; // B1: Finality lock period (destination)
+  dstPublicWithdrawal: bigint; // B2→B3: Resolver exclusive → Public access (destination)
+  dstCancellation: bigint; // B4: Resolver cancellation period (destination)
+}
+
+export interface SDKHashLock {
+  // Hash lock structure from SDK
+  [key: string]: any;
+  // For single fills
+  secretHash?: string;
+  secret?: string;
+  // For multiple fills (Merkle tree)
+  merkleRoot?: string;
+  merkleLeaves?: string[];
+  secretHashes?: string[];
+  secrets?: string[];
+}
+
+export interface SDKAuctionDetails {
+  initialRateBump: number;
+  points: any[];
+  duration: bigint;
+  startTime: bigint;
+}
+
+export interface SDKEscrowExtension {
+  address: SDKAddress;
+  auctionDetails: SDKAuctionDetails;
+  postInteractionData: any;
+  makerPermit?: string;
+  builder: any;
+  hashLockInfo: SDKHashLock;
+  dstChainId: number;
+  dstToken: SDKAddress;
+  srcSafetyDeposit: bigint;
+  dstSafetyDeposit: bigint;
+  timeLocks: SDKTimeLocks;
+}
+
+export interface SDKLimitOrder {
+  extension: any;
+  makerAsset: SDKAddress;
+  takerAsset: SDKAddress;
+  makingAmount: bigint;
+  takingAmount: bigint;
+  _salt: bigint;
+  maker: SDKAddress;
+  receiver: SDKAddress;
+  makerTraits: any;
+}
+
+export interface SDKInnerOrder {
+  settlementExtensionContract: SDKAddress;
+  inner: SDKLimitOrder;
+  fusionExtension: SDKEscrowExtension;
+  escrowExtension: SDKEscrowExtension;
+}
+
+export interface SDKCrossChainOrder {
+  inner: SDKInnerOrder;
+}
+
+// Extend existing FusionOrder with SDK-extracted fields
+export interface FusionOrderExtended extends FusionOrder {
+  // SDK-extracted fields
+  receiver?: string; // From SDK: receiver address (if different from maker)
+  srcSafetyDeposit?: string; // From SDK: srcSafetyDeposit
+  dstSafetyDeposit?: string; // From SDK: dstSafetyDeposit
+
+  // Multiple fills support (Merkle tree secrets)
+  allowPartialFills?: boolean; // From SDK: allowPartialFills
+  allowMultipleFills?: boolean; // From SDK: allowMultipleFills
+  merkleSecretTree?: {
+    merkleRoot: string; // Root of the Merkle tree
+    merkleLeaves: string[]; // All secret hashes in the tree
+    secretCount: number; // N+1 secrets (N parts + 1 completion)
+    fillParts: number; // How many parts the order is divided into
+  };
+
+  // Detailed timelock phases from SDK timeLocks
+  detailedTimeLocks?: {
+    srcWithdrawal: number; // A1: Finality lock (source)
+    srcPublicWithdrawal: number; // A2→A3: Resolver → Public (source)
+    srcCancellation: number; // A4: Resolver cancellation (source)
+    srcPublicCancellation: number; // A5: Public cancellation (source)
+    dstWithdrawal: number; // B1: Finality lock (destination)
+    dstPublicWithdrawal: number; // B2→B3: Resolver → Public (destination)
+    dstCancellation: number; // B4: Resolver cancellation (destination)
+  };
+
+  // Enhanced auction details from SDK
+  enhancedAuctionDetails?: {
+    points: any[]; // Price curve points
+  };
+
+  // Deployment timestamps (CRITICAL for timelock calculation)
+  sourceEscrowDeployedAt?: number; // When source escrow deployed (E1)
+  destinationEscrowDeployedAt?: number; // When destination escrow deployed (E2)
+}
+
+// Timelock phase info (calculated from deployment time + timeLocks)
+export interface TimelockPhaseInfo {
+  orderHash: string;
+
+  // Source chain phases (A1-A5)
+  sourcePhases: {
+    A1_finalityLock: { start: number; end: number; isActive: boolean };
+    A2_resolverUnlock: { start: number; end: number; isActive: boolean };
+    A3_publicUnlock: { start: number; end: number; isActive: boolean };
+    A4_resolverCancellation: { start: number; end: number; isActive: boolean };
+    A5_publicCancellation: { start: number; end: number; isActive: boolean };
+  };
+
+  // Destination chain phases (B1-B4)
+  destinationPhases: {
+    B1_finalityLock: { start: number; end: number; isActive: boolean };
+    B2_resolverUnlock: { start: number; end: number; isActive: boolean };
+    B3_publicUnlock: { start: number; end: number; isActive: boolean };
+    B4_resolverCancellation: { start: number; end: number; isActive: boolean };
+  };
+
+  currentSourcePhase: "A1" | "A2" | "A3" | "A4" | "A5" | "expired";
+  currentDestinationPhase: "B1" | "B2" | "B3" | "B4" | "expired";
+}

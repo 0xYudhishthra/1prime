@@ -8,16 +8,11 @@ declare global {
       NODE_ENV?: "development" | "staging" | "production" | "test";
       LOG_LEVEL?: "debug" | "info" | "warn" | "error";
       SUPPORTED_CHAINS?: string;
-      MAX_ACTIVE_ORDERS?: string;
       ENABLE_PARTIAL_FILLS?: string;
       ETHEREUM_RPC_URL?: string;
       NEAR_RPC_URL?: string;
       EVM_PRIVATE_KEY?: string;
       NEAR_PRIVATE_KEY?: string;
-      REDIS_HOST?: string;
-      REDIS_PORT?: string;
-      REDIS_PASSWORD?: string;
-      REDIS_DB?: string;
       SUPABASE_URL?: string;
       SUPABASE_ANON_KEY?: string;
     }
