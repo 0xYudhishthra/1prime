@@ -79,7 +79,13 @@ export class EscrowVerifier extends EventEmitter {
 
       // Verify source chain escrow
       try {
-        result.sourceEscrow = await sourceAdapter.verifyEscrow(order.orderHash);
+        if (!order.sourceChainHtlcAddress) {
+          throw new Error("Source chain HTLC address not set");
+        }
+        result.sourceEscrow = await sourceAdapter.verifyEscrow(
+          order.orderHash,
+          order.sourceChainHtlcAddress
+        );
         result.isSourceVerified = this.validateEscrowDetails(
           result.sourceEscrow,
           order,
@@ -94,8 +100,12 @@ export class EscrowVerifier extends EventEmitter {
 
       // Verify destination chain escrow
       try {
+        if (!order.destinationChainHtlcAddress) {
+          throw new Error("Destination chain HTLC address not set");
+        }
         result.destinationEscrow = await destinationAdapter.verifyEscrow(
-          order.orderHash
+          order.orderHash,
+          order.destinationChainHtlcAddress
         );
         result.isDestinationVerified = this.validateEscrowDetails(
           result.destinationEscrow,
@@ -313,27 +323,20 @@ export class EscrowVerifier extends EventEmitter {
     }
 
     try {
-      const config = getChainConfig(chainId);
-      const contracts = config.contractAddresses;
+      // In the per-swap HTLC architecture, contracts are deployed dynamically
+      // by resolvers during Phase 2. No static contract verification needed.
+      // Just verify that the adapter is properly initialized and chain is accessible.
 
-      const deploymentChecks = await Promise.all([
-        adapter.checkContractDeployment(contracts.htlc),
-      ]);
+      const blockNumber = await adapter.getBlockNumber();
 
-      const allDeployed = deploymentChecks.every(deployed => deployed);
+      this.logger.info("Chain readiness verified", {
+        chainId,
+        currentBlock: blockNumber,
+      });
 
-      if (allDeployed) {
-        this.logger.info("All contracts deployed", { chainId });
-      } else {
-        this.logger.error("Contract deployment verification failed", {
-          chainId,
-          htlc: deploymentChecks[0],
-        });
-      }
-
-      return allDeployed;
+      return true;
     } catch (error) {
-      this.logger.error("Contract deployment check failed", {
+      this.logger.error("Chain readiness check failed", {
         chainId,
         error: (error as Error).message,
       });

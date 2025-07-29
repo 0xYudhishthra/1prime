@@ -395,6 +395,19 @@ export class TimelockManager extends EventEmitter {
     };
   }
 
+  /**
+   * Start monitoring for a specific order (called when SDK orders are created)
+   */
+  async startMonitoring(orderHash: string): Promise<void> {
+    this.logger.info("Started timelock monitoring for SDK order", {
+      orderHash,
+    });
+
+    // The actual monitoring happens in the existing monitorTimelocks() method
+    // which runs every 30 seconds and checks all orders
+    // This method exists for API compatibility
+  }
+
   cleanup(): void {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);

@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import type { Logger } from "winston";
 import {
   FusionOrder,
+  FusionOrderExtended,
   DutchAuctionState,
   OrderStatus,
   OrderEvent,
@@ -11,6 +12,8 @@ import {
   ResolverBidRequest,
 } from "../types";
 import { createHash } from "crypto";
+import { PartialFillManager } from "./partial-fill-manager";
+import { CustomCurveManager } from "./custom-curve-manager";
 
 export class OrderManager extends EventEmitter {
   private logger: Logger;
@@ -19,9 +22,18 @@ export class OrderManager extends EventEmitter {
   private auctions: Map<string, DutchAuctionState> = new Map();
   private resolvers: Map<string, RelayerStatus> = new Map();
 
+  // Enhanced managers for partial fills and custom curves
+  private partialFillManager: PartialFillManager;
+  private customCurveManager: CustomCurveManager;
+
   constructor(logger: Logger) {
     super();
     this.logger = logger;
+    this.partialFillManager = new PartialFillManager(logger);
+    this.customCurveManager = new CustomCurveManager(logger);
+
+    // Start gas monitoring for custom curves
+    this.customCurveManager.startGasMonitoring();
   }
 
   async createOrder(
@@ -76,6 +88,92 @@ export class OrderManager extends EventEmitter {
     } catch (error) {
       this.logger.error("Failed to create order", {
         error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Create order from SDK CrossChainOrder format
+   */
+  async createOrderFromSDK(
+    fusionOrder: FusionOrderExtended
+  ): Promise<OrderStatus> {
+    try {
+      // Validate order
+      this.validateSDKOrder(fusionOrder);
+
+      // Store order (convert to base FusionOrder for storage)
+      const baseFusionOrder: FusionOrder = {
+        orderHash: fusionOrder.orderHash,
+        maker: fusionOrder.maker,
+        sourceChain: fusionOrder.sourceChain,
+        destinationChain: fusionOrder.destinationChain,
+        sourceToken: fusionOrder.sourceToken,
+        destinationToken: fusionOrder.destinationToken,
+        sourceAmount: fusionOrder.sourceAmount,
+        destinationAmount: fusionOrder.destinationAmount,
+        secretHash: fusionOrder.secretHash,
+        timeout: fusionOrder.timeout,
+        auctionStartTime: fusionOrder.auctionStartTime,
+        auctionDuration: fusionOrder.auctionDuration,
+        initialRateBump: fusionOrder.initialRateBump,
+        signature: fusionOrder.signature,
+        nonce: fusionOrder.nonce,
+        createdAt: fusionOrder.createdAt,
+        sourceChainHtlcAddress: fusionOrder.sourceChainHtlcAddress,
+        destinationChainHtlcAddress: fusionOrder.destinationChainHtlcAddress,
+      };
+      this.orders.set(fusionOrder.orderHash, baseFusionOrder);
+
+      // Initialize order status
+      const orderStatus: OrderStatus = {
+        orderHash: fusionOrder.orderHash,
+        phase: "announcement",
+        isCompleted: false,
+        events: [
+          this.createOrderEvent("order_created", {
+            order: fusionOrder,
+            sdkExtracted: true,
+            srcSafetyDeposit: fusionOrder.srcSafetyDeposit,
+            dstSafetyDeposit: fusionOrder.dstSafetyDeposit,
+            detailedTimeLocks: fusionOrder.detailedTimeLocks,
+          }),
+        ],
+      };
+      this.orderStatuses.set(fusionOrder.orderHash, orderStatus);
+
+      // Start Dutch auction with SDK auction details
+      this.startDutchAuctionFromSDK(fusionOrder);
+
+      // Initialize partial fills if supported (Section 2.5 of whitepaper)
+      if (this.partialFillManager.supportsPartialFills(fusionOrder)) {
+        this.partialFillManager.initializePartialFill(fusionOrder);
+        this.logger.info("Partial fills enabled for order", {
+          orderHash: fusionOrder.orderHash,
+          fillParts: fusionOrder.merkleSecretTree?.fillParts,
+          secretCount: fusionOrder.merkleSecretTree?.secretCount,
+        });
+      }
+
+      // Initialize custom curve with gas adjustments (Section 2.3.4 of whitepaper)
+      this.customCurveManager.initializeCustomCurve(fusionOrder);
+
+      this.logger.info("SDK Order created", {
+        orderHash: fusionOrder.orderHash,
+        maker: fusionOrder.maker,
+        srcSafetyDeposit: fusionOrder.srcSafetyDeposit,
+        dstSafetyDeposit: fusionOrder.dstSafetyDeposit,
+        supportsPartialFills: fusionOrder.allowPartialFills,
+        hasCustomCurve: !!fusionOrder.enhancedAuctionDetails?.points.length,
+      });
+      this.emit("order_created", baseFusionOrder);
+
+      return orderStatus;
+    } catch (error) {
+      this.logger.error("Failed to create SDK order", {
+        error: (error as Error).message,
+        orderHash: fusionOrder.orderHash,
       });
       throw error;
     }
@@ -289,10 +387,18 @@ export class OrderManager extends EventEmitter {
   }
 
   private calculateCurrentAuctionRate(auction: DutchAuctionState): number {
+    // Try to use custom curve manager first (with gas adjustments)
+    const customRate = this.customCurveManager.calculateAdjustedRate(
+      auction.orderHash
+    );
+    if (customRate > 0) {
+      return customRate;
+    }
+
+    // Fallback to simple linear decay
     const timeSinceStart = Date.now() - auction.startTime;
     const progress = Math.min(timeSinceStart / auction.duration, 1);
 
-    // Linear decay from initialRateBump to 0
     const currentRate = auction.initialRateBump * (1 - progress);
     return Math.max(currentRate, 0);
   }
@@ -336,6 +442,65 @@ export class OrderManager extends EventEmitter {
         "Invalid order: auction duration must be between 30s and 5min"
       );
     }
+  }
+
+  private validateSDKOrder(order: FusionOrderExtended): void {
+    // Run base validation first
+    this.validateOrder(order);
+
+    // Validate SDK-specific fields
+    if (order.detailedTimeLocks) {
+      const timeLocks = order.detailedTimeLocks;
+      if (
+        timeLocks.srcWithdrawal < 1 ||
+        timeLocks.dstWithdrawal < 1 ||
+        timeLocks.srcPublicWithdrawal <= timeLocks.srcWithdrawal ||
+        timeLocks.dstPublicWithdrawal <= timeLocks.dstWithdrawal
+      ) {
+        throw new Error("Invalid SDK order: invalid timelock configuration");
+      }
+    }
+
+    // Validate safety deposits
+    if (order.srcSafetyDeposit && parseFloat(order.srcSafetyDeposit) <= 0) {
+      throw new Error(
+        "Invalid SDK order: source safety deposit must be positive"
+      );
+    }
+    if (order.dstSafetyDeposit && parseFloat(order.dstSafetyDeposit) <= 0) {
+      throw new Error(
+        "Invalid SDK order: destination safety deposit must be positive"
+      );
+    }
+  }
+
+  private startDutchAuctionFromSDK(order: FusionOrderExtended): void {
+    // Use enhanced auction details if available, otherwise fall back to base auction
+    const auctionDuration =
+      (order.enhancedAuctionDetails?.points?.length || 0) > 0
+        ? order.auctionDuration
+        : order.auctionDuration;
+
+    const auction: DutchAuctionState = {
+      orderHash: order.orderHash,
+      startTime: order.auctionStartTime,
+      duration: auctionDuration,
+      initialRateBump: order.initialRateBump,
+      currentRate: order.initialRateBump,
+      isActive: true,
+      participatingResolvers: [],
+    };
+
+    this.auctions.set(order.orderHash, auction);
+
+    this.logger.info("SDK Dutch auction started", {
+      orderHash: order.orderHash,
+      duration: auctionDuration,
+      initialRateBump: order.initialRateBump,
+      hasEnhancedPoints: !!order.enhancedAuctionDetails?.points.length,
+    });
+
+    this.emit("auction_started", auction);
   }
 
   private generateOrderHash(

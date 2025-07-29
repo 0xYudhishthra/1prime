@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import type { Logger } from "winston";
 import {
   FusionOrder,
+  FusionOrderExtended,
   OrderStatus,
   CreateOrderRequest,
   ResolverBidRequest,
@@ -21,7 +22,6 @@ export interface RelayerServiceConfig {
   chainIds: string[];
   privateKeys?: Record<string, string>;
   enablePartialFills: boolean;
-  maxActiveOrders: number;
   healthCheckInterval: number;
 }
 
@@ -92,7 +92,6 @@ export class RelayerService extends EventEmitter {
       this.isInitialized = true;
       this.logger.info("Relayer service initialized successfully", {
         chainIds: this.config.chainIds,
-        maxActiveOrders: this.config.maxActiveOrders,
       });
 
       this.emit("relayer_initialized");
@@ -116,12 +115,6 @@ export class RelayerService extends EventEmitter {
         throw new Error(
           `Invalid chain pair: ${request.sourceChain} -> ${request.destinationChain}`
         );
-      }
-
-      // Check active order limit
-      const activeOrders = this.orderManager.getActiveOrders();
-      if (activeOrders.length >= this.config.maxActiveOrders) {
-        throw new Error("Maximum active orders reached");
       }
 
       // Create the order
@@ -165,6 +158,44 @@ export class RelayerService extends EventEmitter {
       this.logger.error("Failed to create order", {
         error: (error as Error).message,
         request,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Create order from SDK CrossChainOrder format
+   */
+  async createOrderFromSDK(
+    fusionOrder: FusionOrderExtended
+  ): Promise<OrderStatus> {
+    try {
+      this.validateInitialized();
+
+      // Create the order through OrderManager
+      const orderStatus = await this.orderManager.createOrderFromSDK(
+        fusionOrder
+      );
+
+      // Start timelock monitoring with enhanced phases
+      if (fusionOrder.detailedTimeLocks) {
+        await this.timelockManager.startMonitoring(fusionOrder.orderHash);
+      }
+
+      this.logger.info("SDK Order created successfully", {
+        orderHash: fusionOrder.orderHash,
+        maker: fusionOrder.maker,
+        sourceChain: fusionOrder.sourceChain,
+        destinationChain: fusionOrder.destinationChain,
+        srcSafetyDeposit: fusionOrder.srcSafetyDeposit,
+        dstSafetyDeposit: fusionOrder.dstSafetyDeposit,
+      });
+
+      return orderStatus;
+    } catch (error) {
+      this.logger.error("Failed to create SDK order", {
+        error: (error as Error).message,
+        fusionOrder,
       });
       throw error;
     }
