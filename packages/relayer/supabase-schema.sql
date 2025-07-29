@@ -18,11 +18,23 @@ CREATE TABLE orders (
   "initialRateBump" INTEGER NOT NULL,
   "signature" TEXT NOT NULL,
   "nonce" TEXT NOT NULL,
+  -- Dynamic HTLC contract addresses (set by resolver during Phase 2)
+  "sourceChainHtlcAddress" TEXT,
+  "destinationChainHtlcAddress" TEXT,
   "createdAt" BIGINT NOT NULL,
   "status" TEXT NOT NULL CHECK (status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created', 'completed', 'cancelled', 'expired')),
   "updatedAt" BIGINT NOT NULL,
   "auctionState" JSONB,
   "events" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  
+  -- SDK-extracted fields (from 1inch Fusion+ SDK CrossChainOrder)
+  "receiver" TEXT, -- Receiver address (if different from maker)
+  "srcSafetyDeposit" TEXT, -- Safety deposit on source chain (wei/smallest unit)
+  "dstSafetyDeposit" TEXT, -- Safety deposit on destination chain (wei/smallest unit)
+  "detailedTimeLocks" JSONB, -- Granular timelock phases (A1-A5, B1-B4)
+  "enhancedAuctionDetails" JSONB, -- Enhanced auction with price curve points
+  "sourceEscrowDeployedAt" BIGINT, -- When source escrow deployed (E1) - critical for timelock calculation
+  "destinationEscrowDeployedAt" BIGINT, -- When destination escrow deployed (E2) - critical for timelock calculation
   
   -- Indexes for efficient querying
   CONSTRAINT valid_chain_pair CHECK (
@@ -50,6 +62,15 @@ CREATE INDEX idx_orders_destination_chain ON orders("destinationChain");
 CREATE INDEX idx_orders_created_at ON orders("createdAt");
 CREATE INDEX idx_orders_timeout ON orders("timeout");
 CREATE INDEX idx_orders_auction_start ON orders("auctionStartTime");
+-- Indexes for dynamic HTLC contract addresses (for tracking per-swap contracts)
+CREATE INDEX idx_orders_source_htlc ON orders("sourceChainHtlcAddress");
+CREATE INDEX idx_orders_destination_htlc ON orders("destinationChainHtlcAddress");
+
+-- Indexes for SDK-extracted fields (for enhanced timelock and safety deposit tracking)
+CREATE INDEX idx_orders_source_escrow_deployed ON orders("sourceEscrowDeployedAt");
+CREATE INDEX idx_orders_destination_escrow_deployed ON orders("destinationEscrowDeployedAt");
+CREATE INDEX idx_orders_src_safety_deposit ON orders("srcSafetyDeposit");
+CREATE INDEX idx_orders_dst_safety_deposit ON orders("dstSafetyDeposit");
 
 CREATE INDEX idx_resolvers_kyc ON resolvers("isKyc");
 CREATE INDEX idx_resolvers_reputation ON resolvers("reputation");
@@ -100,9 +121,33 @@ CREATE TRIGGER update_resolvers_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert some sample data (optional, for testing)
+-- Sample resolvers
 -- INSERT INTO resolvers ("address", "isKyc", "reputation", "lastActivity") VALUES
 -- ('0x742d35Cc6635C0532925a3b8D4A8f4c3c8a54a0b', true, 95, EXTRACT(epoch FROM now()) * 1000),
 -- ('0x8ba1f109551bD432803012645Hac136c69d80Ba9', true, 98, EXTRACT(epoch FROM now()) * 1000);
+
+-- Sample order (HTLC addresses start as NULL, populated by resolver during Phase 2)
+-- INSERT INTO orders (
+--   "orderHash", "maker", "sourceChain", "destinationChain", 
+--   "sourceToken", "destinationToken", "sourceAmount", "destinationAmount",
+--   "secretHash", "timeout", "auctionStartTime", "auctionDuration", 
+--   "initialRateBump", "signature", "nonce", "createdAt", "updatedAt"
+-- ) VALUES (
+--   '0x1234567890abcdef...', '0x1234567890abcdef1234567890abcdef12345678',
+--   'ethereum', 'near', '0x0000000000000000000000000000000000000000',
+--   'wrap.near', '1000000000000000000', '5000000000000000000000000',
+--   '0xabcdef1234567890...', EXTRACT(epoch FROM now() + interval '1 hour') * 1000,
+--   EXTRACT(epoch FROM now()) * 1000, 120000, 1000,
+--   '0xsignature...', 'nonce123', EXTRACT(epoch FROM now()) * 1000,
+--   EXTRACT(epoch FROM now()) * 1000
+-- );
+
+-- To update HTLC addresses during Phase 2 (when resolver deploys contracts):
+-- UPDATE orders 
+-- SET "sourceChainHtlcAddress" = '0x...', 
+--     "destinationChainHtlcAddress" = 'htlc.contract.near',
+--     "updatedAt" = EXTRACT(epoch FROM now()) * 1000
+-- WHERE "orderHash" = '0x1234567890abcdef...';
 
 -- View for active orders (convenience)
 CREATE VIEW active_orders AS
