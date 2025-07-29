@@ -23,11 +23,7 @@ export class NEARChainAdapter extends BaseChainAdapter {
       if (privateKey) {
         this.keyStore = new keyStores.InMemoryKeyStore();
         const keyPair = nearAPI.utils.KeyPair.fromString(privateKey);
-        await this.keyStore.setKey(
-          this.config.chainId,
-          "relayer-account.near",
-          keyPair
-        );
+        await this.keyStore.setKey(this.config.chainId, "1prime.near", keyPair);
       } else {
         this.keyStore = new keyStores.InMemoryKeyStore();
       }
@@ -49,7 +45,7 @@ export class NEARChainAdapter extends BaseChainAdapter {
       this.connection = await connect(connectionConfig);
 
       if (privateKey) {
-        this.account = await this.connection.account("relayer-account.near");
+        this.account = await this.connection.account("1prime.near");
       }
 
       this.logger.info("NEAR connection initialized", {
