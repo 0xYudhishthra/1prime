@@ -5,6 +5,7 @@ import { createLogger, format, transports } from "winston";
 import dotenv from "dotenv";
 import { RelayerService, RelayerServiceConfig } from "./services/relayer";
 import { DatabaseService, DatabaseConfig } from "./services/database";
+import { WebSocketService } from "./services/websocket-service";
 import { createRelayerRoutes } from "./api/routes";
 import { RelayerConfig } from "./types";
 
@@ -36,23 +37,12 @@ const config: RelayerConfig = {
     (process.env.NODE_ENV as "development" | "staging" | "production") ||
     "development",
   chains: {}, // Will be populated from environment
-  redis: {
-    host: process.env.REDIS_HOST || "localhost",
-    port: parseInt(process.env.REDIS_PORT || "6379", 10),
-    ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }),
-    db: parseInt(process.env.REDIS_DB || "0", 10),
-  },
   logging: {
     level:
       (process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error") || "info",
     ...(process.env.LOG_FILE && { file: process.env.LOG_FILE }),
   },
   security: {
-    enableRateLimit: process.env.ENABLE_RATE_LIMIT === "true",
-    maxRequestsPerMinute: parseInt(
-      process.env.MAX_REQUESTS_PER_MINUTE || "100",
-      10
-    ),
     corsOrigins: (process.env.CORS_ORIGINS || "*").split(","),
   },
   database: {
@@ -92,7 +82,6 @@ const relayerServiceConfig: RelayerServiceConfig = {
     }).filter(([_, value]) => value !== undefined)
   ) as Record<string, string>,
   enablePartialFills: process.env.ENABLE_PARTIAL_FILLS === "true",
-  maxActiveOrders: parseInt(process.env.MAX_ACTIVE_ORDERS || "100", 10),
   healthCheckInterval: config.monitoring.healthCheckInterval,
 };
 
@@ -100,6 +89,7 @@ class RelayerApplication {
   private app: express.Application;
   private relayerService: RelayerService;
   private databaseService: DatabaseService;
+  private webSocketService: WebSocketService;
   private server?: any;
 
   constructor() {
@@ -107,6 +97,9 @@ class RelayerApplication {
 
     // Initialize database service
     this.databaseService = new DatabaseService(config.database, logger);
+
+    // Initialize WebSocket service
+    this.webSocketService = new WebSocketService(logger);
 
     // Initialize relayer service with database
     this.relayerService = new RelayerService(
@@ -164,14 +157,7 @@ class RelayerApplication {
       next();
     });
 
-    // Rate limiting (if enabled)
-    if (config.security.enableRateLimit) {
-      // Note: In production, you would use express-rate-limit or similar
-      this.app.use((req, res, next) => {
-        // Simple rate limiting placeholder
-        next();
-      });
-    }
+    // CORS and other middleware configured above
   }
 
   private setupRoutes(): void {
@@ -311,13 +297,18 @@ class RelayerApplication {
       // Initialize relayer service
       await this.relayerService.initialize();
 
+      // Start WebSocket server
+      const wsPort = parseInt(process.env.WS_PORT || "3001");
+      await this.webSocketService.start(wsPort);
+
       // Start HTTP server
       this.server = this.app.listen(config.port, () => {
         logger.info("Relayer service started", {
           port: config.port,
+          wsPort,
           environment: config.environment,
           supportedChains: relayerServiceConfig.chainIds,
-          maxActiveOrders: relayerServiceConfig.maxActiveOrders,
+          websocketEnabled: true,
         });
       });
 
@@ -345,6 +336,9 @@ class RelayerApplication {
           logger.info("HTTP server closed");
         });
       }
+
+      // Shutdown WebSocket service
+      await this.webSocketService.stop();
 
       // Shutdown relayer service
       await this.relayerService.shutdown();
