@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shortcut-auth",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-07-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "BETTER_AUTH_SECRET": "your-secret-key-here",
+    "BETTER_AUTH_URL": "http://localhost:8787",
+    "DATABASE_URL": "your-database-url-here"
+  },
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "MY_KV_NAMESPACE",
+  //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  //   }
+  // ],
+  // "r2_buckets": [
+  //   {
+  //     "binding": "MY_BUCKET",
+  //     "bucket_name": "my-bucket"
+  //   }
+  // ],
+  // "d1_databases": [
+  //   {
+  //     "binding": "MY_DB",
+  //     "database_name": "my-database",
+  //     "database_id": ""
+  //   }
+  // ],
+  // "ai": {
+  //   "binding": "AI"
+  // },
+  // "observability": {
+  //   "enabled": true,
+  //   "head_sampling_rate": 1
+  // }
+}
