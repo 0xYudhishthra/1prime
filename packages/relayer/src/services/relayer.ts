@@ -17,6 +17,7 @@ import { TimelockManager } from "./timelock-manager";
 import { ChainAdapterFactory } from "../adapters";
 import { isValidChainPair, getChainConfig } from "../config/chains";
 import { DatabaseService } from "./database";
+import { OneInchApiService } from "./1inch-api";
 
 export interface RelayerServiceConfig {
   chainIds: string[];
@@ -29,6 +30,7 @@ export class RelayerService extends EventEmitter {
   private logger: Logger;
   private config: RelayerServiceConfig;
   private databaseService: DatabaseService;
+  private oneInchApiService?: OneInchApiService;
   private orderManager: OrderManager;
   private escrowVerifier: EscrowVerifier;
   private secretManager: SecretManager;
@@ -47,12 +49,14 @@ export class RelayerService extends EventEmitter {
   constructor(
     logger: Logger,
     config: RelayerServiceConfig,
-    databaseService: DatabaseService
+    databaseService: DatabaseService,
+    oneInchApiService?: OneInchApiService
   ) {
     super();
     this.logger = logger;
     this.config = config;
     this.databaseService = databaseService;
+    this.oneInchApiService = oneInchApiService;
     this.stats = {
       ordersCreated: 0,
       ordersCompleted: 0,
@@ -63,7 +67,7 @@ export class RelayerService extends EventEmitter {
 
     // Initialize core services
     this.orderManager = new OrderManager(logger);
-    this.escrowVerifier = new EscrowVerifier(logger);
+    this.escrowVerifier = new EscrowVerifier(logger, oneInchApiService);
     this.secretManager = new SecretManager(logger);
     this.timelockManager = new TimelockManager(logger);
 

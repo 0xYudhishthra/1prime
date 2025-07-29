@@ -3,6 +3,7 @@ import type { Logger } from "winston";
 import { ChainAdapter, EscrowDetails, FusionOrder } from "../types";
 import { ChainAdapterFactory } from "../adapters";
 import { getChainConfig } from "../config/chains";
+import { OneInchApiService } from "./1inch-api";
 
 export interface EscrowVerificationResult {
   orderHash: string;
@@ -16,13 +17,15 @@ export interface EscrowVerificationResult {
 
 export class EscrowVerifier extends EventEmitter {
   private logger: Logger;
+  private oneInchApiService?: OneInchApiService;
   private adapters: Map<string, ChainAdapter> = new Map();
   private verificationInterval: number = 10000; // 10 seconds
   private activeVerifications: Set<string> = new Set();
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, oneInchApiService?: OneInchApiService) {
     super();
     this.logger = logger;
+    this.oneInchApiService = oneInchApiService;
   }
 
   async initializeAdapters(
@@ -36,7 +39,8 @@ export class EscrowVerifier extends EventEmitter {
         const adapter = ChainAdapterFactory.createAdapter(
           config,
           this.logger,
-          privateKey
+          privateKey,
+          this.oneInchApiService
         );
         this.adapters.set(chainId, adapter);
 
