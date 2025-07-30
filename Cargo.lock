@@ -3175,6 +3175,8 @@ dependencies = [
  "k256",
  "lazy_static",
  "near-api",
+ "near-crypto",
+ "near-primitives",
  "omni-transaction",
  "regex",
  "reqwest 0.12.22",
