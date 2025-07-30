@@ -17,6 +17,7 @@ k256 = "0.13.4"
 sha3 = "0.10.8"
 ethers = "2.0.14"
 omni-transaction = "0.2.3"
+lazy_static = "1.5.0"
 
 [build-dependencies]
 dotenvy = "0.15"

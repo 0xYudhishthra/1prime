@@ -3173,6 +3173,7 @@ dependencies = [
  "ethers",
  "hex",
  "k256",
+ "lazy_static",
  "near-api",
  "omni-transaction",
  "regex",

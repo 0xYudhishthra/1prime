@@ -4,7 +4,7 @@ use regex::Regex;
 
 #[derive(Serialize, Deserialize)]
 pub struct ContractArgs {
-    pub method_name: String,
+    pub methodName: String,
     pub args: serde_json::Value,
 }
 
@@ -75,6 +75,7 @@ pub async fn agent_view(args: ContractArgs, config: &AgentConfig) -> Result<serd
 
 /// Contract call from agent account inside the API
 pub async fn agent_call(args: ContractArgs, config: &AgentConfig) -> Result<serde_json::Value, reqwest::Error> {
+    println!("{}", serde_json::to_string(&args).unwrap());
     agent("call", serde_json::to_value(args).unwrap(), config).await
 }
 
@@ -86,7 +87,7 @@ pub async fn request_signature(
     config: &AgentConfig
 ) -> Result<serde_json::Value, reqwest::Error> {
     let args = ContractArgs {
-        method_name: "request_signature".to_string(),
+        methodName: "request_signature".to_string(),
         args: serde_json::json!({
             "path": path,
             "payload": payload,

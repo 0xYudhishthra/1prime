@@ -1,8 +1,25 @@
 use crate::utils::get_tee_account;
+use std::sync::{Arc, RwLock};
+use lazy_static::lazy_static;
 
-pub async fn get_near_account() -> String {
-    let tee_account = get_tee_account().await;
-    tee_account
+lazy_static! {
+    static ref FUNDING_NEAR_ADDRESS: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+}
+
+pub fn update_funding_near_address(value: String) {
+    let mut funding_near_address = FUNDING_NEAR_ADDRESS.write().unwrap();
+    *funding_near_address = value;
+}
+
+pub async fn get_funding_near_address() -> String {
+    let funding_near_address = FUNDING_NEAR_ADDRESS.read().unwrap();
+    funding_near_address.clone()
+}
+
+pub async fn setup_funding_near_address() {
+   let funding_near_address = get_funding_near_address().await;
+   update_funding_near_address(funding_near_address);
+   funding_near_address
 }
 
 #[tokio::test]
