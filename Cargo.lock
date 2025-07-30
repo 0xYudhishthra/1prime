@@ -2478,6 +2478,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib-base64"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c107e4e20fb45f55e1350d5401e3b6b97561aa9e757363c280bac76794d6b2e"
+
+[[package]]
 name = "libc"
 version = "0.2.174"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3168,12 +3174,14 @@ name = "oneprime-resolver"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "borsh",
  "bs58 0.5.1",
  "dotenvy",
  "ethers",
  "hex",
  "k256",
  "lazy_static",
+ "lib-base64",
  "near-api",
  "near-crypto",
  "near-primitives",

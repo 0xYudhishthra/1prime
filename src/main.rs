@@ -21,7 +21,8 @@ async fn main() {
         .route("/api/near/get_address", axum::routing::get(routes::near::get_address::get_funding_near_address))
         .route("/api/eth/get_balance", axum::routing::get(routes::eth::get_balance::get_balance))
         .route("/api/near/get_balance", axum::routing::get(routes::near::get_balance::get_near_balance))
-        .route("/api/eth/mock_transfer", axum::routing::get(routes::eth::mock_transfer_funds::mock_transfer_funds));
+        .route("/api/eth/mock_transfer", axum::routing::get(routes::eth::mock_transfer_funds::mock_transfer_funds))
+        .route("/api/near/mock_transfer", axum::routing::get(routes::near::mock_transfer_funds::mock_transfer_funds));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
     axum::serve(listener, app).await.unwrap();

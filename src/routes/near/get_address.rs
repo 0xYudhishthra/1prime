@@ -10,6 +10,7 @@ use near_primitives::types::AccountId;
 
 lazy_static! {
     static ref FUNDING_NEAR_ADDRESS: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+    static ref FUNDING_NEAR_PUBLIC_KEY: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
 }
 
 pub fn update_funding_near_address(value: String) {
@@ -17,9 +18,19 @@ pub fn update_funding_near_address(value: String) {
     *funding_near_address = value;
 }
 
+pub fn update_funding_near_public_key(value: String) {
+    let mut funding_near_public_key = FUNDING_NEAR_PUBLIC_KEY.write().unwrap();
+    *funding_near_public_key = value;
+}
+
 pub async fn get_funding_near_address() -> String {
     let funding_near_address = FUNDING_NEAR_ADDRESS.read().unwrap();
     funding_near_address.clone()
+}
+
+pub async fn get_funding_near_public_key() -> String {
+    let funding_near_public_key = FUNDING_NEAR_PUBLIC_KEY.read().unwrap();
+    funding_near_public_key.clone()
 }
 
 pub async fn setup_funding_near_address() {
@@ -35,10 +46,12 @@ pub async fn setup_funding_near_address() {
     .read_only()
         .fetch_from_testnet()
     .await
-    .expect("Failed to fetch etherum address");
+    .expect("Failed to fetch near address");
 
     // Parse the ED25519 public key from the data
     let public_key_str = derived_address_data.data;
+    update_funding_near_public_key(public_key_str.clone());
+
     println!("Public Key Data: {:?}", public_key_str);
     let public_key = PublicKey::from_str(&public_key_str)
         .expect("Failed to parse public key");

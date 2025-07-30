@@ -1,5 +1,8 @@
 # 1prime Resolver
 
+## How to Build
+1. Ensure you have docker installed
+
 ## Endpoints
 
 ```
