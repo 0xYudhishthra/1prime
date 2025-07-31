@@ -17,5 +17,14 @@ Pass the `CloudflareBindings` as generics when instantiation `Hono`:
 
 ```ts
 // src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
+const app = new Hono<{ Bindings: CloudflareBindings }>();
 ```
+
+## Create two files for environment variables
+
+```txt
+touch .env
+touch .dev.vars
+```
+
+The variables in both files are the same.
