@@ -379,7 +379,7 @@ impl EscrowDst {
                 !self
                     .used_secret_indices
                     .iter()
-                    .any(|used_idx| *used_idx == proof.index),
+                    .any(|used_idx| used_idx == proof.index),
                 "Secret index already used"
             );
 
