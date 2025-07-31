@@ -92,3 +92,7 @@ bun.lockb
 # OS
 .DS_Store
 Thumbs.db 
+
+cross-chain-swap
+cross-chain-resolver-example
+**/target/
