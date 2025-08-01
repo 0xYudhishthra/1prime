@@ -1,0 +1,32 @@
+services:
+  # always have shade-agent-api first in order of services
+  shade-agent-api:
+    environment:
+      NEAR_ACCOUNT_ID: ${NEAR_ACCOUNT_ID}
+      NEAR_SEED_PHRASE: ${NEAR_SEED_PHRASE}
+      API_CODEHASH: ${API_CODEHASH}
+      APP_CODEHASH: ${APP_CODEHASH}
+      NEXT_PUBLIC_contractId: ${NEXT_PUBLIC_contractId}
+      NEAR_RPC_JSON: ${NEAR_RPC_JSON}
+    platform: linux/amd64 # Explicitly set for TDX
+    # shade-agent-api-image
+    image: mattdlockyer/shade-agent-api@sha256:a86e3a4300b069c08d629a38d61a3d780f7992eaf36aa505e4527e466553e2e5
+    container_name: shade-agent-api
+    # DO NOT EXPOSE THE API PORT TO THE PUBLIC
+    volumes:
+      - /var/run/tappd.sock:/var/run/tappd.sock
+    restart: always
+  shade-agent-app:
+    environment:
+      NEXT_PUBLIC_contractId: ${NEXT_PUBLIC_contractId}
+      ALCHEMY_ETH_SEPOLIA_RPC_URL: ${ALCHEMY_ETH_SEPOLIA_RPC_URL}
+      MOCK_DESTINATION_ADDRESS: ${MOCK_DESTINATION_ADDRESS}
+    platform: linux/amd64 # Explicitly set for TDX
+    # shade-agent-app-image
+    image: dreamerchaserhah/1prime-resolver@sha256:8189ef23d6a8ab059069127ac53571ffcf043da56126fd6b86d6aa5837bb89b5
+    container_name: shade-agent-app
+    ports:
+      - "3001:3001"
+    volumes:
+      - /var/run/tappd.sock:/var/run/tappd.sock
+    restart: always

@@ -1,0 +1,27 @@
+[package]
+name = "oneprime-resolver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.4"
+tokio = { version = "1.47.0", features = ["full"]}
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.11.1"
+near-api = { git = "https://github.com/near/near-api-rs.git" }
+bs58 = "0.5.1"
+hex = "0.4.3"
+k256 = "0.13.4"
+sha3 = "0.10.8"
+ethers = "2.0.14"
+omni-transaction = "0.2.3"
+lazy_static = "1.5.0"
+near-crypto = "0.30.3"
+near-primitives = "0.30.3"
+borsh = "1.5.7"
+lib-base64 = "2.1.0"
+
+[build-dependencies]
+dotenvy = "0.15"
