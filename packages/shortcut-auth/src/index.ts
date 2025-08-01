@@ -9,10 +9,18 @@ import {
   sendNearTransaction,
 } from "./nearwallet";
 import { KeyPairString } from "@near-js/crypto";
+import { cors } from "hono/cors";
 
 const app = new Hono<{
   Bindings: CloudflareBindings;
 }>();
+
+// Add CORS middleware
+app.use("*", cors({
+  origin: "*", // For development - restrict this in production
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+}));
 
 app.on(["GET", "POST"], "/api/**", c => {
   const auth = createAuth(c.env);
