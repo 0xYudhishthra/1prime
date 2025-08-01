@@ -7,9 +7,27 @@ import { eq } from "drizzle-orm";
 import {
   createFundedTestnetAccountNear,
   sendNearTransaction,
+  getNearBalance
 } from "./nearwallet";
 import { KeyPairString } from "@near-js/crypto";
 import { cors } from "hono/cors";
+import { createPublicClient, http, formatEther } from "viem";
+import { sepolia, arbitrumSepolia, optimismSepolia } from "viem/chains";
+
+// Chain configuration
+const SUPPORTED_CHAINS = {
+  11155111: { chain: sepolia, name: "Ethereum Sepolia" },
+  421614: { chain: arbitrumSepolia, name: "Arbitrum Sepolia" },
+  11155420: { chain: optimismSepolia, name: "Optimism Sepolia" },
+} as const;
+
+function getChainConfig(chainId: number) {
+  const config = SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS];
+  if (!config) {
+    throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+  return config;
+}
 
 const app = new Hono<{
   Bindings: CloudflareBindings;
@@ -160,6 +178,154 @@ app.post("/api/send-near-transaction", async c => {
   console.log("result", result);
 
   return c.json({ result });
+});
+
+app.get("/api/wallet/supported-chains", async c => {
+  const chains = Object.entries(SUPPORTED_CHAINS).map(([chainId, config]) => ({
+    chainId: parseInt(chainId),
+    name: config.name
+  }));
+
+  return c.json({ chains });
+});
+
+app.get("/api/wallet/addresses", async c => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const db = createDb(c.env.DATABASE_URL);
+  const wallet = await db
+    .select()
+    .from(smartWallet)
+    .where(eq(smartWallet.userId, session.user.id))
+    .limit(1);
+
+  if (!wallet[0]) {
+    return c.json({ error: "Wallet not found" }, 404);
+  }
+
+  try {
+    // Get chain configuration from API parameter
+    const chainConfig = getChainConfig(11155111);
+
+    return c.json({
+      evm: {
+        address: wallet[0].evm_smartAccountAddress,
+        chainId: 11155111,
+        chainName: chainConfig.name,
+      },
+      near: {
+        accountId: wallet[0].near_accountId,
+      }
+    });
+
+  } catch (error) {
+    console.error("Address fetch error:", error);
+    return c.json({ error: "Failed to fetch addresses" }, 500);
+  }
+});
+
+app.get("/api/wallet/balances", async c => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Get chainId from query parameter
+  const chainIdParam = c.req.query("chainId");
+  if (!chainIdParam) {
+    return c.json({ error: "chainId query parameter is required" }, 400);
+  }
+
+  const chainId = parseInt(chainIdParam);
+  if (isNaN(chainId)) {
+    return c.json({ error: "Invalid chainId parameter" }, 400);
+  }
+
+  const db = createDb(c.env.DATABASE_URL);
+  const wallet = await db
+    .select()
+    .from(smartWallet)
+    .where(eq(smartWallet.userId, session.user.id))
+    .limit(1);
+
+  if (!wallet[0]) {
+    return c.json({ error: "Wallet not found" }, 404);
+  }
+
+  try {
+    // Get chain configuration from API parameter
+    const chainConfig = getChainConfig(chainId);
+
+    // Get EVM balance
+    const publicClient = createPublicClient({
+      chain: chainConfig.chain,
+      transport: http(),
+    });
+
+    const evmBalance = await publicClient.getBalance({
+      address: wallet[0].evm_smartAccountAddress as `0x${string}`,
+    });
+
+    // Get NEAR balance using abstracted function
+    const nearBalance = await getNearBalance(wallet[0].near_accountId!);
+
+    return c.json({
+      evm: {
+        address: wallet[0].evm_smartAccountAddress,
+        chainId: chainId,
+        chainName: chainConfig.name,
+        balance: {
+          raw: evmBalance.toString(),
+          formatted: formatEther(evmBalance),
+          symbol: "ETH"
+        }
+      },
+      near: {
+        accountId: wallet[0].near_accountId,
+        balance: nearBalance
+      }
+    });
+
+  } catch (error) {
+    console.error("Balance fetch error:", error);
+    return c.json({ error: "Failed to fetch balances" }, 500);
+  }
+});
+
+app.get("/api/wallet/export-private-key", async c => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const db = createDb(c.env.DATABASE_URL);
+  const wallet = await db
+    .select()
+    .from(smartWallet)
+    .where(eq(smartWallet.userId, session.user.id))
+    .limit(1);
+
+  return c.json({
+    warning: "DEVELOPMENT ONLY - Keep this private key secure!",
+    signerPrivateKey: wallet[0].evm_signerPrivateKey,
+    smartWalletAddress: wallet[0].evm_smartAccountAddress,
+    note: "Import the signerPrivateKey into MetaMask. The resulting address will be different from smartWalletAddress."
+  });
 });
 
 export default app;

@@ -57,3 +57,29 @@ export async function sendNearTransaction(
 
   return result;
 }
+
+export async function getNearBalance(accountId: string) {
+  const provider = new JsonRpcProvider({
+    url: "https://test.rpc.fastnear.com",
+  }) as Provider;
+
+  try {
+    const account = await provider.query({
+      request_type: "view_account",
+      finality: "final",
+      account_id: accountId,
+    });
+
+    // Type assertion for the account response
+    const accountData = account as any;
+
+    return {
+      raw: accountData.amount,
+      formatted: (parseFloat(accountData.amount) / 1e24).toFixed(4),
+      symbol: "NEAR"
+    };
+  } catch (error) {
+    console.error("NEAR balance fetch error:", error);
+    throw error;
+  }
+}
