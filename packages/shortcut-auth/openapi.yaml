@@ -191,6 +191,267 @@ paths:
         "500":
           $ref: "#/components/responses/ServerError"
 
+  /api/wallet/supported-chains:
+    get:
+      tags:
+        - Wallet
+      summary: Get supported EVM testnet chains
+      description: Returns list of supported EVM testnet chains for cross-chain operations
+      security: [] # No auth required
+      responses:
+        "200":
+          description: Supported chains retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chains:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chainId:
+                          type: integer
+                          example: 421614
+                        name:
+                          type: string
+                          example: "Arbitrum Sepolia"
+              example:
+                chains:
+                  - chainId: 11155111
+                    name: "Ethereum Sepolia"
+                  - chainId: 421614
+                    name: "Arbitrum Sepolia"
+                  - chainId: 11155420
+                    name: "Optimism Sepolia"
+
+  /api/wallet/addresses:
+    get:
+      tags:
+        - Wallet
+      summary: Get wallet addresses
+      description: Returns both EVM and NEAR wallet addresses. EVM address works on all supported testnet chains.
+      responses:
+        "200":
+          description: Wallet addresses retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evm:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                        example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                      note:
+                        type: string
+                        example: "Same address works on all supported EVM chains (testnets)"
+                  near:
+                    type: object
+                    properties:
+                      accountId:
+                        type: string
+                        example: "ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Wallet not found"
+
+  /api/wallet/export-private-key:
+    get:
+      tags:
+        - Wallet
+      summary: Export private key (DEVELOPMENT ONLY)
+      description: |
+        ⚠️ DEVELOPMENT ONLY - Exports the signer private key for MetaMask import.
+
+        **SECURITY WARNING**: This endpoint exposes sensitive private key information.
+        Remove this endpoint in production environments.
+
+        The same private key works on all EVM chains but generates different smart wallet addresses.
+      responses:
+        "200":
+          description: Private key exported successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  warning:
+                    type: string
+                    example: "⚠️ DEVELOPMENT ONLY - Keep this private key secure! Never share it!"
+                  signerPrivateKey:
+                    type: string
+                    description: Private key for MetaMask import (keep secure!)
+                    example: "0x1234567890abcdef..."
+                  signerAddress:
+                    type: string
+                    description: EOA address derived from private key (same on all chains)
+                    example: "0xabcdef1234567890..."
+                  smartWalletInfo:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                        example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                      deployedOnChain:
+                        type: integer
+                        example: 421614
+                      kernelVersion:
+                        type: string
+                        example: "v3.1"
+                  chains:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chainId:
+                          type: integer
+                          example: 421614
+                        name:
+                          type: string
+                          example: "Arbitrum Sepolia"
+                        signerAddress:
+                          type: string
+                          description: EOA address (same across all chains)
+                          example: "0xabcdef1234567890..."
+                        smartWalletAddress:
+                          type: string
+                          description: Smart wallet address
+                          example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                        note:
+                          type: string
+                          example: "Smart wallet addresses may differ on different chains if deployed separately"
+                  instructions:
+                    type: object
+                    properties:
+                      metamask:
+                        type: string
+                        example: "Import the 'signerPrivateKey' into MetaMask. You'll see the 'signerAddress', not the smart wallet address."
+                      networks:
+                        type: string
+                        example: "Add testnet networks to MetaMask to see your signer account on different chains."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Wallet not found"
+
+  /api/wallet/balances:
+    get:
+      tags:
+        - Wallet
+      summary: Get multi-chain wallet balances for specific testnet chain
+      description: Returns current balances for both EVM (specific testnet chain) and NEAR wallets
+      parameters:
+        - name: chainId
+          in: query
+          required: true
+          description: EVM Chain ID (11155111=Ethereum Sepolia, 421614=Arbitrum Sepolia, 11155420=Optimism Sepolia)
+          schema:
+            type: integer
+            enum: [11155111, 421614, 11155420]
+            example: 421614
+      responses:
+        "200":
+          description: Wallet balances retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evm:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                        example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                      chainId:
+                        type: integer
+                        example: 421614
+                      chainName:
+                        type: string
+                        example: "Arbitrum Sepolia"
+                      balance:
+                        type: object
+                        properties:
+                          raw:
+                            type: string
+                            description: Balance in wei (smallest unit)
+                            example: "1000000000000000000"
+                          formatted:
+                            type: string
+                            description: Human-readable balance
+                            example: "1.0"
+                          symbol:
+                            type: string
+                            example: "ETH"
+                  near:
+                    type: object
+                    properties:
+                      accountId:
+                        type: string
+                        example: "ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet"
+                      balance:
+                        type: object
+                        properties:
+                          raw:
+                            type: string
+                            description: Balance in yoctoNEAR (smallest unit)
+                            example: "5000000000000000000000000"
+                          formatted:
+                            type: string
+                            description: Human-readable balance
+                            example: "5.0000"
+                          symbol:
+                            type: string
+                            example: "NEAR"
+        "400":
+          description: Missing or invalid chainId parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missing_chain:
+                  value:
+                    error: "chainId query parameter is required"
+                invalid_chain:
+                  value:
+                    error: "Invalid chainId parameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Wallet not found"
+        "500":
+          description: Failed to fetch balances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Failed to fetch balances"
+
   /api/**:
     get:
       tags:
@@ -280,6 +541,8 @@ components:
 tags:
   - name: Authentication
     description: User authentication and account management
+  - name: Wallet
+    description: Wallet address and balance operations
   - name: EVM Transactions
     description: Ethereum Virtual Machine transaction operations
   - name: NEAR Transactions
@@ -289,16 +552,12 @@ tags:
 
 # Future endpoints for UX flow completion
 x-future-endpoints:
-  wallet:
-    - GET /api/wallet/addresses - Get EVM and NEAR wallet addresses
-    - GET /api/wallet/balances - Get multi-chain token balances
-
   deposit:
     - GET /api/deposit/address/{chain} - Get deposit address for specific chain
     - POST /api/deposit/verify - Verify deposit transaction
 
   swap:
-    - GET /api/swap/chains - Get supported EVM chains
+    - GET /api/swap/chains - Get supported EVM chains (deprecated - use /api/wallet/supported-chains)
     - GET /api/swap/tokens/{chain} - Get supported tokens for chain
     - POST /api/swap/quote - Get swap quote using 1inch Fusion+
     - POST /api/swap/execute - Execute swap order
