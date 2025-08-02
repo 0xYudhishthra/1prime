@@ -13,9 +13,12 @@ importers:
       '@1inch/cross-chain-sdk':
         specifier: ^0.1.15
         version: 0.1.15
+<<<<<<< HEAD
       '@near-js/providers':
         specifier: '2'
         version: 2.2.4(@near-js/crypto@2.2.4)(@near-js/transactions@2.2.4)(@near-js/types@2.2.4)(@near-js/utils@2.2.4)
+=======
+>>>>>>> 365f002 (Update NEAR contract tests and configurations for pre-deployed contracts)
       '@supabase/supabase-js':
         specifier: ^2.38.5
         version: 2.53.0
@@ -183,9 +186,12 @@ importers:
       prettier-plugin-tailwindcss:
         specifier: ^0.6.14
         version: 0.6.14(prettier@3.6.2)
+<<<<<<< HEAD
       tsx:
         specifier: 4.20.3
         version: 4.20.3
+=======
+>>>>>>> 365f002 (Update NEAR contract tests and configurations for pre-deployed contracts)
       wrangler:
         specifier: ^4.4.0
         version: 4.27.0
