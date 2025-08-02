@@ -1,0 +1,28 @@
+[profile.default]
+src = 'contracts'
+out = 'out'
+libs = ['lib']
+test = 'test'
+optimizer_runs = 1000000
+via-ir = true
+evm_version = 'shanghai'
+gas_reports = ["EscrowSrc", "EscrowDst", "EscrowFactory", "MerkleStorageInvalidator"]
+
+[profile.lite.optimizer_details.yulDetails]
+optimizerSteps = ''
+
+[fmt]
+line_length = 140
+bracket_spacing = true
+multiline_func_header = 'params_first'
+wrap_comments = true
+
+[fuzz]
+runs = 1024
+
+[profile.zksync]
+src = 'contracts'
+libs = ['lib']
+fallback_oz = true
+is_system = false
+mode = "3"
