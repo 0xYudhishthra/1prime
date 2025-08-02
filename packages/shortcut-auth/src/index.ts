@@ -5,6 +5,8 @@ import {
   sendTransaction,
   getWalletAddresses,
   getMultiChainBalances,
+  getTestnetTokenAddresses,
+  getTestnetFaucetInfo,
 } from './zerodev';
 import { smartWallet } from './db/schema';
 import { createDb } from './db';
@@ -13,6 +15,10 @@ import {
   createFundedTestnetAccountNear,
   sendNearTransaction,
   getNearBalance,
+  getAllNearTokenBalances,
+  getNearTokenBalanceDetails,
+  checkSpecificNearToken,
+  getBridgeTokenInfo,
 } from './nearwallet';
 import { KeyPairString } from '@near-js/crypto';
 import { cors } from 'hono/cors';
@@ -318,6 +324,106 @@ app.get('/api/wallet/addresses', async (c) => {
   }
 });
 
+app.get('/api/wallet/near/bridge-info', async (c) => {
+  const bridgeInfo = getBridgeTokenInfo();
+
+  return c.json({
+    message: 'NEAR bridge token information',
+    ...bridgeInfo,
+    troubleshooting: {
+      issue:
+        "If you bridged tokens but don't see them, they might have a different account ID than expected",
+      solution:
+        'Use the /check-token endpoint below to manually verify specific token contracts',
+      commonIssues: [
+        'Token bridged to mainnet instead of testnet',
+        'Token has a different account ID pattern',
+        'Bridge transaction failed or is still pending',
+      ],
+    },
+  });
+});
+
+app.post('/api/wallet/near/check-token', async (c) => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const { tokenAccountId } = await c.req.json();
+
+  if (!tokenAccountId) {
+    return c.json({ error: 'tokenAccountId is required' }, 400);
+  }
+
+  const db = createDb(c.env.DATABASE_URL);
+  const wallet = await db
+    .select()
+    .from(smartWallet)
+    .where(eq(smartWallet.userId, session.user.id))
+    .limit(1);
+
+  if (!wallet[0]) {
+    return c.json({ error: 'Wallet not found' }, 404);
+  }
+
+  if (!wallet[0].near_accountId) {
+    return c.json({ error: 'No NEAR account found' }, 404);
+  }
+
+  try {
+    const tokenBalance = await checkSpecificNearToken(
+      wallet[0].near_accountId,
+      tokenAccountId
+    );
+
+    if (!tokenBalance) {
+      return c.json({
+        found: false,
+        message: `No balance found for token ${tokenAccountId}`,
+        suggestions: [
+          'Check if the token account ID is correct',
+          'Verify the token exists on NEAR testnet',
+          "Make sure you've actually received the tokens",
+        ],
+      });
+    }
+
+    return c.json({
+      found: true,
+      tokenBalance,
+      message: `Found ${tokenBalance.balance.formatted} ${tokenBalance.token.symbol}`,
+    });
+  } catch (error) {
+    console.error('Token check error:', error);
+    return c.json({ error: 'Failed to check token' }, 500);
+  }
+});
+
+app.get('/api/wallet/testnet-tokens', async (c) => {
+  const faucetInfo = getTestnetFaucetInfo();
+  const tokenAddresses = getTestnetTokenAddresses();
+
+  return c.json({
+    message: 'Testnet token information and faucet links',
+    faucets: faucetInfo,
+    tokenAddresses,
+    instructions: {
+      step1: 'Get native tokens (ETH) from the faucets listed above',
+      step2:
+        'For ERC-20 tokens, you may need to mint them from the contract or find specific token faucets',
+      step3:
+        'Check token contract pages on Etherscan for mint/faucet functions',
+      step4:
+        'Some tokens may not be available on all testnets - this is normal',
+    },
+  });
+});
+
 app.get('/api/wallet/balances', async (c) => {
   const auth = createAuth(c.env);
   const session = await auth.api.getSession({
@@ -354,29 +460,26 @@ app.get('/api/wallet/balances', async (c) => {
       rpcUrls
     );
 
-    // Get NEAR balance
-    const nearBalance = await getNearBalance(wallet[0].near_accountId!);
+    // Get NEAR token balances (all tokens)
+    const nearTokens = await getAllNearTokenBalances(wallet[0].near_accountId!);
 
-    return c.json({
-      evm: {
-        address: wallet[0].evm_smartAccountAddress,
-        totalBalances: evmBalances.totalBalances,
-        chainBreakdown: evmBalances.chainBreakdown,
-        supportedChains: evmBalances.supportedChains,
-        note: 'Chain-abstracted balances show your unified balance across all supported EVM chains',
-      },
+    // Update the EVM balances with NEAR account info
+    const updatedEvmBalances = {
+      ...evmBalances,
       near: {
-        accountId: wallet[0].near_accountId,
-        balance: nearBalance,
+        accountId: wallet[0].near_accountId!,
+        tokens: nearTokens,
       },
       summary: {
-        totalEvmChains: evmBalances.supportedChains.length,
-        evmChainsWithBalance: evmBalances.chainBreakdown.filter(
-          (chain) => parseFloat(chain.balance.formatted) > 0
-        ).length,
-        hasNearBalance: parseFloat(nearBalance.formatted) > 0,
+        ...evmBalances.summary,
+        totalNearTokens: nearTokens.length,
+        hasNearBalance: nearTokens.some(
+          (token) => parseFloat(token.balance.formatted) > 0
+        ),
       },
-    });
+    };
+
+    return c.json(updatedEvmBalances);
   } catch (error) {
     console.error('Balance fetch error:', error);
     return c.json({ error: 'Failed to fetch balances' }, 500);
