@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "dev:relayer": "pnpm --filter @1prime/relayer dev",
     "build:relayer": "pnpm --filter @1prime/relayer build",
     "test:relayer": "pnpm --filter @1prime/relayer test",
@@ -28,5 +29,13 @@
   ],
   "author": "1Prime",
   "license": "MIT",
-  "packageManager": "pnpm@8.15.0"
+  "packageManager": "pnpm@8.15.0",
+  "dependencies": {
+    "@1inch/byte-utils": "3.1.0",
+    "@1inch/cross-chain-sdk": "0.1.15",
+    "@1inch/fusion-sdk": "2.3.6"
+  },
+  "devDependencies": {
+    "@milahu/patch-package": "6.4.14"
+  }
 }
