@@ -35,12 +35,16 @@ echo -e "${YELLOW}Building escrow-factory...${NC}"
 cargo near build non-reproducible-wasm
 
 cd ../escrow-dst  
-echo -e "${YELLOW}Building escrow-dst...${NC}"
+echo -e "${YELLOW}Building escrow-dst (first pass)...${NC}"
 cargo near build non-reproducible-wasm
+echo -e "${YELLOW}Building escrow-dst (second pass with WASM)...${NC}"
+cargo near build non-reproducible-wasm --features include-wasm
 
 cd ../escrow-src
-echo -e "${YELLOW}Building escrow-src...${NC}"
+echo -e "${YELLOW}Building escrow-src (first pass)...${NC}"
 cargo near build non-reproducible-wasm
+echo -e "${YELLOW}Building escrow-src (second pass with WASM)...${NC}"
+cargo near build non-reproducible-wasm --features include-wasm
 
 cd ../resolver
 echo -e "${YELLOW}Building resolver...${NC}"
