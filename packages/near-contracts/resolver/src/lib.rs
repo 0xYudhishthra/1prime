@@ -1,5 +1,6 @@
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::json_types::{U128, U64};
 use near_sdk::{env, near_bindgen, AccountId, Gas, NearToken, PanicOnDefault, Promise};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -21,8 +22,8 @@ pub struct Resolver {
 pub struct Order {
     pub maker: AccountId,
     pub taker: AccountId,
-    pub making_amount: u128,
-    pub taking_amount: u128,
+    pub making_amount: U128,
+    pub taking_amount: U128,
     pub maker_asset: AccountId, // "near" for native NEAR
     pub taker_asset: String,    // ETH address of token on destination
     pub salt: String,
@@ -34,10 +35,10 @@ pub struct Order {
 #[serde(crate = "near_sdk::serde")]
 pub struct OrderExtension {
     pub hashlock: String,
-    pub src_chain_id: u64,
-    pub dst_chain_id: u64,
-    pub src_safety_deposit: u128,
-    pub dst_safety_deposit: u128,
+    pub src_chain_id: U64,
+    pub dst_chain_id: U64,
+    pub src_safety_deposit: U128,
+    pub dst_safety_deposit: U128,
     pub timelocks: Timelocks,
 }
 
@@ -45,7 +46,7 @@ pub struct OrderExtension {
 #[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Timelocks {
-    pub deployed_at: u64, // Deployment timestamp (MUST match factory)
+    pub deployed_at: U64, // Deployment timestamp (MUST match factory)
     pub src_withdrawal: u32,
     pub src_public_withdrawal: u32,
     pub src_cancellation: u32,
@@ -64,8 +65,8 @@ pub struct Immutables {
     pub maker: AccountId,
     pub taker: AccountId,
     pub token: AccountId,
-    pub amount: u128,
-    pub safety_deposit: u128,
+    pub amount: U128,
+    pub safety_deposit: U128,
     pub timelocks: Timelocks,
 }
 
@@ -74,9 +75,9 @@ pub struct Immutables {
 #[serde(crate = "near_sdk::serde")]
 pub struct DstImmutablesComplement {
     pub maker: AccountId,
-    pub amount: u128,
+    pub amount: U128,
     pub token: AccountId,
-    pub safety_deposit: u128,
+    pub safety_deposit: U128,
     pub chain_id: String,
 }
 
@@ -98,7 +99,7 @@ impl Resolver {
         &mut self,
         order: Order,
         order_signature: String, // For future validation
-        amount: u128,
+        amount: U128,
     ) -> Promise {
         // Only owner can deploy
         assert_eq!(
@@ -118,7 +119,7 @@ impl Resolver {
 
         // Create immutables for source escrow
         let mut timelocks = order.extension.timelocks.clone();
-        timelocks.deployed_at = 0; // Will be set by factory during deployment
+        timelocks.deployed_at = U64::from(0); // Will be set by factory during deployment
 
         let immutables = Immutables {
             order_hash: order_hash.clone(),
@@ -134,17 +135,17 @@ impl Resolver {
         // Create destination complement info
         let dst_complement = DstImmutablesComplement {
             maker: order.maker.clone(), // Can be different if order.receiver is set
-            amount: (order.taking_amount * amount) / order.making_amount, // Pro-rata
+            amount: U128::from((u128::from(order.taking_amount) * u128::from(amount)) / u128::from(order.making_amount)), // Pro-rata
             token: order.taker_asset.parse().unwrap(),
             safety_deposit: order.extension.dst_safety_deposit,
-            chain_id: order.extension.dst_chain_id.to_string(),
+            chain_id: u64::from(order.extension.dst_chain_id).to_string(),
         };
 
         // Calculate required deposit
         let required_deposit = if order.maker_asset.as_str() == "near" {
-            NearToken::from_yoctonear(amount + order.extension.src_safety_deposit)
+            NearToken::from_yoctonear(u128::from(amount) + u128::from(order.extension.src_safety_deposit))
         } else {
-            NearToken::from_yoctonear(order.extension.src_safety_deposit)
+            NearToken::from_yoctonear(u128::from(order.extension.src_safety_deposit))
         };
 
         // Call factory to create source escrow
@@ -162,7 +163,7 @@ impl Resolver {
     pub fn deploy_dst(
         &mut self,
         dst_immutables: Immutables,
-        src_cancellation_timestamp: u64,
+        src_cancellation_timestamp: U64,
     ) -> Promise {
         assert_eq!(
             env::predecessor_account_id(),
@@ -208,8 +209,8 @@ impl Resolver {
         let data = format!(
             "{}:{}:{}:{}:{}:{}:{}",
             order.maker,
-            order.making_amount,
-            order.taking_amount,
+            u128::from(order.making_amount),
+            u128::from(order.taking_amount),
             order.maker_asset,
             order.taker_asset,
             order.salt,

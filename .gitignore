@@ -95,3 +95,4 @@ bun.lockb
 Thumbs.db 
 
 **/target/
+logs/

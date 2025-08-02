@@ -52,22 +52,13 @@ echo -e "${YELLOW}  export TAKER_ACCOUNT=\"your-taker.testnet\"${NC}"
 
 # Show current config
 echo -e "\n${BLUE}Current Configuration:${NC}"
-echo -e "  Factory: ${FACTORY_ACCOUNT:-escrow-factory.testnet}"
-echo -e "  Resolver: ${RESOLVER_ACCOUNT:-escrow-resolver.testnet}"
+echo -e "  Factory: ${FACTORY_ACCOUNT:-1prime-global-factory-contract.testnet}"
+echo -e "  Resolver: ${RESOLVER_ACCOUNT:-1prime-global-resolver-contract.testnet}"
 echo -e "  Maker: ${MAKER_ACCOUNT:-maker-test.testnet}"
 echo -e "  Taker: ${TAKER_ACCOUNT:-taker-test.testnet}"
 
-# Build contracts
-echo -e "\n${BLUE}🔨 Building Contracts...${NC}"
-cd ../
-if [ -f "./build.sh" ]; then
-    ./build.sh
-    echo -e "${GREEN}✅ Contracts built successfully${NC}"
-else
-    echo -e "${RED}❌ Build script not found${NC}"
-    echo -e "${YELLOW}Please run from the near-contracts directory${NC}"
-    exit 1
-fi
+echo -e "\n${BLUE}📋 Using Pre-deployed Contracts${NC}"
+echo -e "${GREEN}✅ Contracts are already deployed and ready for testing${NC}"
 
 # Run integration tests
 echo -e "\n${BLUE}🚀 Running Integration Tests...${NC}"

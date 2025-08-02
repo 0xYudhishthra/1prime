@@ -17,17 +17,20 @@ These examples provide hands-on demonstrations of the complete cross-chain escro
 ## 🚀 Quick Start
 
 ```bash
-# 1. Set up environment variables (optional)
-export FACTORY_ACCOUNT="your-factory.testnet"
-export RESOLVER_ACCOUNT="your-resolver.testnet"
+# 1. Create test accounts at https://wallet.testnet.near.org
+#    - maker-test.testnet (or set MAKER_ACCOUNT environment variable)
+#    - taker-test.testnet (or set TAKER_ACCOUNT environment variable)
+#    - Fund them with testnet NEAR at https://near-faucet.io/
+
+# 2. Set up environment variables (optional - if using custom account names)
 export MAKER_ACCOUNT="your-maker.testnet"
 export TAKER_ACCOUNT="your-taker.testnet"
 
-# 2. Build and deploy contracts
+# 3. Check deployed contracts (optional)
 cd packages/near-contracts/tests
 node integration-tests.js
 
-# 3. Run examples
+# 4. Run examples
 cd examples
 node near-to-eth-swap.js
 node eth-to-near-swap.js
@@ -69,8 +72,17 @@ const config = {
   nodeUrl: "https://rpc.testnet.near.org",
   walletUrl: "https://wallet.testnet.near.org",
   accounts: {
-    factory: process.env.FACTORY_ACCOUNT || "escrow-factory.testnet",
-    resolver: process.env.RESOLVER_ACCOUNT || "escrow-resolver.testnet",
+    factory:
+      process.env.FACTORY_ACCOUNT || "1prime-global-factory-contract.testnet",
+    resolver:
+      process.env.RESOLVER_ACCOUNT || "1prime-global-resolver-contract.testnet",
+    escrowSrcTemplate:
+      process.env.ESCROW_SRC_TEMPLATE ||
+      "1prime-global-escrow-src-template.testnet",
+    escrowDstTemplate:
+      process.env.ESCROW_DST_TEMPLATE ||
+      "1prime-global-escrow-dst-template.testnet",
+    owner: process.env.OWNER || "1prime-global-owner.testnet",
     maker: process.env.MAKER_ACCOUNT || "maker-test.testnet",
     taker: process.env.TAKER_ACCOUNT || "taker-test.testnet",
   },

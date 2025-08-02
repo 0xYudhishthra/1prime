@@ -14,23 +14,27 @@ const colors = {
   bold: "\x1b[1m",
 };
 
-// Test configuration for NEAR testnet
+// Test configuration for NEAR testnet - using deployed contracts
 const config = {
   network: "testnet",
   nodeUrl: "https://rpc.testnet.near.org",
   walletUrl: "https://wallet.testnet.near.org",
   accounts: {
-    // These will be created dynamically or use existing testnet accounts
-    factory: process.env.FACTORY_ACCOUNT || "escrow-factory.testnet",
-    resolver: process.env.RESOLVER_ACCOUNT || "escrow-resolver.testnet",
+    // Using deployed contract addresses
+    factory:
+      process.env.FACTORY_ACCOUNT || "1prime-global-factory-contract.testnet",
+    resolver:
+      process.env.RESOLVER_ACCOUNT || "1prime-global-resolver-contract.testnet",
+    escrowSrcTemplate:
+      process.env.ESCROW_SRC_TEMPLATE ||
+      "1prime-global-escrow-src-template.testnet",
+    escrowDstTemplate:
+      process.env.ESCROW_DST_TEMPLATE ||
+      "1prime-global-escrow-dst-template.testnet",
+    owner: process.env.OWNER || "1prime-global-owner.testnet",
+    // Test accounts for making transactions
     maker: process.env.MAKER_ACCOUNT || "maker-test.testnet",
     taker: process.env.TAKER_ACCOUNT || "taker-test.testnet",
-  },
-  contracts: {
-    factory: "../escrow-factory/target/near/escrow_factory.wasm",
-    escrowDst: "../escrow-dst/target/near/escrow_dst.wasm",
-    escrowSrc: "../escrow-src/target/near/escrow_src.wasm",
-    resolver: "../resolver/target/near/near_resolver.wasm",
   },
 };
 
@@ -118,18 +122,6 @@ class TestRunner {
         : "Not found - install with: npm install -g near-cli"
     );
 
-    // Check if contracts are built
-    const contractsExist = Object.values(config.contracts).every(contract =>
-      fs.existsSync(path.join(__dirname, contract))
-    );
-    this.logTest(
-      "Contract Builds",
-      contractsExist ? "PASS" : "FAIL",
-      contractsExist
-        ? "All WASM files present"
-        : "Missing WASM files - run: ./build.sh"
-    );
-
     // Check for testnet account credentials
     const homeDir = require("os").homedir();
     const nearCredentialsDir = path.join(
@@ -146,56 +138,77 @@ class TestRunner {
         : "No testnet accounts - create at https://wallet.testnet.near.org"
     );
 
-    return nearCheck.success && contractsExist && hasCredentials;
+    return nearCheck.success && hasCredentials;
   }
 
-  async buildContracts() {
-    this.logSection("🔨 Building Contracts");
+  async checkDeployedContracts() {
+    this.logSection("📦 Checking Deployed Contracts");
 
-    const buildResult = await this.runCommand(
-      "./build.sh",
-      "Building all contracts"
-    );
-    this.logTest(
-      "Contract Build",
-      buildResult.success ? "PASS" : "FAIL",
-      buildResult.success
-        ? "All contracts built successfully"
-        : buildResult.error
-    );
+    const contractAccounts = [
+      { name: "Factory", account: config.accounts.factory },
+      { name: "Resolver", account: config.accounts.resolver },
+      {
+        name: "Escrow Src Template",
+        account: config.accounts.escrowSrcTemplate,
+      },
+      {
+        name: "Escrow Dst Template",
+        account: config.accounts.escrowDstTemplate,
+      },
+    ];
 
-    // Verify individual contract builds
-    for (const [name, path] of Object.entries(config.contracts)) {
-      const exists = fs.existsSync(path);
-      this.logTest(
-        `${name} WASM`,
-        exists ? "PASS" : "FAIL",
-        exists ? `Found at ${path}` : `Missing: ${path}`
+    for (const contract of contractAccounts) {
+      // Check if contract is deployed by checking code_hash
+      const stateResult = await this.runCommand(
+        `near state ${contract.account} --networkId ${config.network}`,
+        `Checking ${contract.name} contract`
       );
-    }
 
-    return buildResult.success;
+      if (stateResult.success) {
+        const codeHash = stateResult.output.match(/code_hash: '([^']+)'/)?.[1];
+        const isDeployed =
+          codeHash && codeHash !== "11111111111111111111111111111111";
+
+        this.logTest(
+          `${contract.name} Deployment`,
+          isDeployed ? "PASS" : "FAIL",
+          isDeployed ? "Contract deployed" : "No contract deployed"
+        );
+      } else {
+        this.logTest(
+          `${contract.name} Deployment`,
+          "FAIL",
+          "Account not found or inaccessible"
+        );
+      }
+    }
   }
 
-  async createTestAccounts() {
+  async checkTestAccounts() {
     this.logSection("👥 Checking Test Accounts");
 
-    for (const [name, accountId] of Object.entries(config.accounts)) {
+    // Only check test accounts (maker/taker), not deployed contract accounts
+    const testAccounts = {
+      maker: config.accounts.maker,
+      taker: config.accounts.taker,
+    };
+
+    for (const [name, accountId] of Object.entries(testAccounts)) {
       // Check if account exists on testnet
       const viewResult = await this.runCommand(
-        `near view-account ${accountId} --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
+        `near view-account ${accountId} --networkId ${config.network}`,
         `Checking ${name} account`
       );
 
       if (viewResult.success) {
         this.logTest(
-          `Account: ${accountId}`,
+          `Test Account: ${accountId}`,
           "PASS",
           "Account exists and accessible"
         );
       } else {
         this.logTest(
-          `Account: ${accountId}`,
+          `Test Account: ${accountId}`,
           "FAIL",
           "Account not found - please create at https://wallet.testnet.near.org"
         );
@@ -210,135 +223,12 @@ class TestRunner {
     this.log("   https://near-faucet.io/", "yellow");
   }
 
-  async deployContracts() {
-    this.logSection("🚀 Deploying Contracts");
-
-    // Deploy Factory
-    const factoryDeploy = await this.runCommand(
-      `near deploy --wasmFile ${config.contracts.factory} --accountId ${config.accounts.factory} --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
-      "Deploying Factory contract"
-    );
-    this.logTest(
-      "Factory Deployment",
-      factoryDeploy.success ? "PASS" : "FAIL",
-      factoryDeploy.success ? "Deployed successfully" : factoryDeploy.error
-    );
-
-    // Initialize Factory (owner will be the resolver account)
-    const factoryInit = await this.runCommand(
-      `near call ${config.accounts.factory} new '{"owner": "${config.accounts.resolver}", "rescue_delay": 1800}' --accountId ${config.accounts.factory} --gas 300000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
-      "Initializing Factory contract"
-    );
-    this.logTest(
-      "Factory Initialization",
-      factoryInit.success ? "PASS" : "FAIL",
-      factoryInit.success ? "Initialized successfully" : factoryInit.error
-    );
-
-    // Deploy Resolver (if resolver contract exists)
-    if (fs.existsSync(path.join(__dirname, config.contracts.resolver))) {
-      const resolverDeploy = await this.runCommand(
-        `near deploy --wasmFile ${config.contracts.resolver} --accountId ${config.accounts.resolver} --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
-        "Deploying Resolver contract"
-      );
-      this.logTest(
-        "Resolver Deployment",
-        resolverDeploy.success ? "PASS" : "FAIL",
-        resolverDeploy.success ? "Deployed successfully" : resolverDeploy.error
-      );
-
-      const resolverInit = await this.runCommand(
-        `near call ${config.accounts.resolver} new '{"escrow_factory": "${config.accounts.factory}", "owner": "${config.accounts.resolver}"}' --accountId ${config.accounts.resolver} --gas 300000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
-        "Initializing Resolver contract"
-      );
-      this.logTest(
-        "Resolver Initialization",
-        resolverInit.success ? "PASS" : "FAIL",
-        resolverInit.success ? "Initialized successfully" : resolverInit.error
-      );
-    } else {
-      this.logTest(
-        "Resolver Contract",
-        "SKIP",
-        "Resolver WASM not found - will deploy factory only"
-      );
-    }
-
-    return factoryDeploy.success && factoryInit.success;
-  }
-
-  async setEscrowCode() {
-    this.logSection("📝 Setting Escrow WASM Code");
-
-    // Set destination escrow code
-    const dstWasmPath = path.join(__dirname, config.contracts.escrowDst);
-    if (fs.existsSync(dstWasmPath)) {
-      const base64DstCommand = `base64 -i ${dstWasmPath}`;
-      const base64DstResult = await this.runCommand(base64DstCommand);
-
-      if (base64DstResult.success) {
-        const setDstCode = await this.runCommand(
-          `near call ${config.accounts.factory} set_escrow_dst_code '{"escrow_code": "${base64DstResult.output}"}' --accountId ${config.accounts.resolver} --gas 300000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
-          "Setting destination escrow WASM code"
-        );
-        this.logTest(
-          "Set Dst Escrow Code",
-          setDstCode.success ? "PASS" : "FAIL",
-          setDstCode.success ? "Code uploaded successfully" : setDstCode.error
-        );
-      } else {
-        this.logTest(
-          "Set Dst Escrow Code",
-          "FAIL",
-          "Failed to encode WASM file to base64"
-        );
-      }
-    } else {
-      this.logTest(
-        "Set Dst Escrow Code",
-        "SKIP",
-        "Destination escrow WASM not found"
-      );
-    }
-
-    // Set source escrow code if it exists
-    const srcWasmPath = path.join(__dirname, config.contracts.escrowSrc);
-    if (fs.existsSync(srcWasmPath)) {
-      const base64SrcCommand = `base64 -i ${srcWasmPath}`;
-      const base64SrcResult = await this.runCommand(base64SrcCommand);
-
-      if (base64SrcResult.success) {
-        const setSrcCode = await this.runCommand(
-          `near call ${config.accounts.factory} set_escrow_src_code '{"escrow_code": "${base64SrcResult.output}"}' --accountId ${config.accounts.resolver} --gas 300000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
-          "Setting source escrow WASM code"
-        );
-        this.logTest(
-          "Set Src Escrow Code",
-          setSrcCode.success ? "PASS" : "FAIL",
-          setSrcCode.success ? "Code uploaded successfully" : setSrcCode.error
-        );
-      } else {
-        this.logTest(
-          "Set Src Escrow Code",
-          "FAIL",
-          "Failed to encode WASM file to base64"
-        );
-      }
-    } else {
-      this.logTest(
-        "Set Src Escrow Code",
-        "SKIP",
-        "Source escrow WASM not found"
-      );
-    }
-  }
-
   async testFactoryFunctionality() {
     this.logSection("🧪 Testing Factory Functionality");
 
     // Test factory stats view
     const statsResult = await this.runCommand(
-      `near view ${config.accounts.factory} get_factory_stats --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
+      `near view ${config.accounts.factory} get_stats '{}' --networkId ${config.network}`,
       "Checking factory stats"
     );
     this.logTest(
@@ -347,53 +237,61 @@ class TestRunner {
       statsResult.success ? "Stats retrieved successfully" : statsResult.error
     );
 
-    // Test creating destination escrow
+    // Test creating destination escrow via resolver
     const currentTime = Date.now();
-    const escrowData = {
-      order_hash: "test_order_123",
-      immutables: {
-        order_hash: "test_order_123",
-        hashlock:
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        maker: config.accounts.maker,
-        taker: config.accounts.taker,
-        token: "near",
-        amount: "1000000000000000000000000",
-        safety_deposit: "100000000000000000000000",
-        timelocks: {
-          deployed_at: currentTime,
-          src_withdrawal: 300,
-          src_public_withdrawal: 600,
-          src_cancellation: 900,
-          src_public_cancellation: 1200,
-          dst_withdrawal: 180,
-          dst_public_withdrawal: 360,
-          dst_cancellation: 720,
-        },
-      },
-      dst_complement: {
-        safety_deposit: "100000000000000000000000",
+    const testOrderHash = `test_order_${Date.now()}`;
+    const immutables = {
+      order_hash: testOrderHash,
+      hashlock:
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      maker: config.accounts.maker,
+      taker: config.accounts.resolver,
+      token: "near",
+      amount: "1000000000000000000000000", // 1 NEAR
+      safety_deposit: "100000000000000000000000", // 0.1 NEAR
+      timelocks: {
         deployed_at: currentTime,
+        src_withdrawal: 300,
+        src_public_withdrawal: 600,
+        src_cancellation: 900,
+        src_public_cancellation: 1200,
+        dst_withdrawal: 180,
+        dst_public_withdrawal: 360,
+        dst_cancellation: 720,
       },
     };
 
-    const createEscrowResult = await this.runCommand(
-      `near call ${config.accounts.factory} create_dst_escrow '${JSON.stringify(
-        escrowData
-      )}' --accountId ${
-        config.accounts.taker
-      } --gas 300000000000000 --amount 1.1 --nodeUrl ${
-        config.nodeUrl
-      } --networkId ${config.network}`,
-      "Creating destination escrow"
+    const createDstResult = await this.runCommand(
+      `near call ${config.accounts.resolver} deploy_dst '${JSON.stringify({
+        dst_immutables: immutables,
+        src_cancellation_timestamp: Math.floor(Date.now() / 1000) + 3600,
+      })}' --accountId ${
+        config.accounts.resolver
+      } --gas 300000000000000 --amount 1.1 --networkId ${config.network}`,
+      "Creating destination escrow via resolver"
     );
     this.logTest(
       "Create Destination Escrow",
-      createEscrowResult.success ? "PASS" : "FAIL",
-      createEscrowResult.success
+      createDstResult.success ? "PASS" : "FAIL",
+      createDstResult.success
         ? "Escrow created successfully"
-        : createEscrowResult.error
+        : createDstResult.error
     );
+
+    // Test getting escrow address
+    if (createDstResult.success) {
+      const getAddressResult = await this.runCommand(
+        `near view ${config.accounts.factory} get_escrow_address '{"order_hash": "${testOrderHash}"}' --networkId ${config.network}`,
+        "Getting escrow address"
+      );
+      this.logTest(
+        "Get Escrow Address",
+        getAddressResult.success ? "PASS" : "FAIL",
+        getAddressResult.success
+          ? "Address retrieved successfully"
+          : getAddressResult.error
+      );
+    }
   }
 
   async testViewMethods() {
@@ -402,35 +300,28 @@ class TestRunner {
     // Test various view methods
     const viewTests = [
       {
-        method: "get_factory_stats",
+        method: "get_stats",
+        args: "{}",
         contract: config.accounts.factory,
         name: "Factory Stats",
       },
       {
         method: "get_owner",
+        args: "{}",
         contract: config.accounts.factory,
         name: "Factory Owner",
       },
+      {
+        method: "get_owner",
+        args: "{}",
+        contract: config.accounts.resolver,
+        name: "Resolver Owner",
+      },
     ];
-
-    if (fs.existsSync(config.contracts.resolver)) {
-      viewTests.push(
-        {
-          method: "get_factory",
-          contract: config.accounts.resolver,
-          name: "Resolver Factory",
-        },
-        {
-          method: "get_owner",
-          contract: config.accounts.resolver,
-          name: "Resolver Owner",
-        }
-      );
-    }
 
     for (const test of viewTests) {
       const result = await this.runCommand(
-        `near view ${test.contract} ${test.method} --nodeUrl ${config.nodeUrl} --networkId ${config.network}`,
+        `near view ${test.contract} ${test.method} '${test.args}' --networkId ${config.network}`,
         `Testing ${test.name} view`
       );
       this.logTest(
@@ -512,13 +403,8 @@ class TestRunner {
         return false;
       }
 
-      // Change to contract directory
-      process.chdir(path.join(__dirname, ".."));
-
-      await this.buildContracts();
-      await this.createTestAccounts();
-      await this.deployContracts();
-      await this.setEscrowCode();
+      await this.checkDeployedContracts();
+      await this.checkTestAccounts();
       await this.testFactoryFunctionality();
       await this.testViewMethods();
       await this.runExampleScripts();
