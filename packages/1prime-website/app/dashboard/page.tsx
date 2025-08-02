@@ -187,17 +187,25 @@ function DashboardPage() {
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold">1Prime Wallet</h1>
           </div>
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
-            />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/deposit">
+              <Button variant="outline" size="sm">
+                <Wallet className="mr-2 h-4 w-4" />
+                Deposit
+              </Button>
+            </Link>
+            <Button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+              />
+              Refresh
+            </Button>
+          </div>
         </div>
         {/* Summary */}
         <div className="mb-8">
