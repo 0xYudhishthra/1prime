@@ -1,18 +1,22 @@
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, near_bindgen, AccountId, Gas, NearToken, Promise};
+use near_sdk::{env, near_bindgen, AccountId, Gas, NearToken, PanicOnDefault, Promise};
+
+#[cfg(not(target_arch = "wasm32"))]
+use near_sdk::schemars::{self, JsonSchema};
 
 /// Resolver contract for NEAR that handles cross-chain swap orders
 /// Similar to Resolver.sol but adapted for NEAR
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Resolver {
     pub owner: AccountId,
     pub escrow_factory: AccountId,
     pub dst_chain_resolver: String, // ETH address for the resolver on destination chain
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Order {
     pub maker: AccountId,
@@ -25,7 +29,8 @@ pub struct Order {
     pub extension: OrderExtension,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct OrderExtension {
     pub hashlock: String,
@@ -36,7 +41,8 @@ pub struct OrderExtension {
     pub timelocks: Timelocks,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Timelocks {
     pub deployed_at: u64, // Deployment timestamp (MUST match factory)
@@ -49,7 +55,8 @@ pub struct Timelocks {
     pub dst_cancellation: u32,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Immutables {
     pub order_hash: String,
@@ -62,7 +69,8 @@ pub struct Immutables {
     pub timelocks: Timelocks,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct DstImmutablesComplement {
     pub maker: AccountId,
@@ -127,7 +135,7 @@ impl Resolver {
         let dst_complement = DstImmutablesComplement {
             maker: order.maker.clone(), // Can be different if order.receiver is set
             amount: (order.taking_amount * amount) / order.making_amount, // Pro-rata
-            token: AccountId::new_unchecked(order.taker_asset.clone()),
+            token: order.taker_asset.parse().unwrap(),
             safety_deposit: order.extension.dst_safety_deposit,
             chain_id: order.extension.dst_chain_id.to_string(),
         };
@@ -152,7 +160,7 @@ impl Resolver {
     /// Called by resolver after source escrow is created on ETH
     #[payable]
     pub fn deploy_dst(
-        &self,
+        &mut self,
         dst_immutables: Immutables,
         src_cancellation_timestamp: u64,
     ) -> Promise {

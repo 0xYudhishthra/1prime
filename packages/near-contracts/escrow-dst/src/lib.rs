@@ -6,12 +6,16 @@ use near_sdk::{
 };
 use sha2::{Digest, Sha256};
 
+#[cfg(not(target_arch = "wasm32"))]
+use near_sdk::schemars::{self, JsonSchema};
+
 // Gas constants for cross-contract calls
 const NEP141_TRANSFER_GAS: Gas = Gas::from_tgas(5); // 5 TGas
 const CALLBACK_GAS: Gas = Gas::from_tgas(2); // 2 TGas
 
 /// Copy of Immutables struct from factory
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Immutables {
     pub order_hash: String,
@@ -26,6 +30,7 @@ pub struct Immutables {
 
 /// Timelock configuration
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Timelocks {
     pub deployed_at: u64,             // Deployment timestamp
@@ -40,6 +45,7 @@ pub struct Timelocks {
 
 /// Escrow state tracking
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct EscrowState {
     pub is_funded: bool,
@@ -51,7 +57,8 @@ pub struct EscrowState {
 }
 
 /// Merkle proof for partial fills
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MerkleProof {
     pub proof: Vec<String>, // Hex-encoded sibling hashes
@@ -59,7 +66,8 @@ pub struct MerkleProof {
 }
 
 /// Escrow information for external queries
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct EscrowInfo {
     pub order_hash: String,

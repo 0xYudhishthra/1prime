@@ -1,0 +1,38 @@
+{
+  "name": "near-cross-chain-escrow-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive testing suite for NEAR cross-chain escrow contracts on NEAR testnet",
+  "main": "integration-tests.js",
+  "scripts": {
+    "test": "node integration-tests.js",
+    "test:testnet": "./run-testnet-tests.sh",
+    "build-contracts": "cd .. && ./build.sh",
+    "near-to-eth": "cd examples && node near-to-eth-swap.js",
+    "eth-to-near": "cd examples && node eth-to-near-swap.js"
+  },
+  "keywords": [
+    "near",
+    "blockchain",
+    "cross-chain",
+    "escrow",
+    "1inch",
+    "fusion",
+    "testnet",
+    "testing"
+  ],
+  "author": "NEAR Cross-Chain Escrow Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {},
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/unite-defi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/unite-defi/issues"
+  },
+  "homepage": "https://github.com/your-org/unite-defi#readme"
+}

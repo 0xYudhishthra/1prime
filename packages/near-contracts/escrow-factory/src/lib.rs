@@ -1,7 +1,10 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, near_bindgen, AccountId, Gas, NearToken, PanicOnDefault, Promise};
+use near_sdk::{env, log, near_bindgen, AccountId, Gas, NearToken, PanicOnDefault, Promise};
+
+#[cfg(not(target_arch = "wasm32"))]
+use near_sdk::schemars::{self, JsonSchema};
 use sha2::{Digest, Sha256};
 
 // Gas constants
@@ -10,6 +13,7 @@ const CALLBACK_GAS: Gas = Gas::from_tgas(10); // 10 TGas
 
 /// Immutables struct matching EVM BaseEscrow.Immutables
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Immutables {
     pub order_hash: String,
@@ -24,6 +28,7 @@ pub struct Immutables {
 
 /// Timelock configuration matching EVM TimelocksLib
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Timelocks {
     pub deployed_at: u64,             // Deployment timestamp
@@ -38,6 +43,7 @@ pub struct Timelocks {
 
 /// Destination chain immutables complement (from EVM)
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct DstImmutablesComplement {
     pub maker: AccountId,
@@ -48,7 +54,8 @@ pub struct DstImmutablesComplement {
 }
 
 /// Escrow creation result
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct EscrowCreationResult {
     pub escrow_account: AccountId,
@@ -228,7 +235,7 @@ impl EscrowFactory {
             .function_call(
                 "new".to_string(),
                 near_sdk::serde_json::to_vec(&init_args).unwrap(),
-                0,
+                NearToken::from_yoctonear(0),
                 Gas::from_tgas(30),
             );
 
@@ -240,7 +247,7 @@ impl EscrowFactory {
         promise.then(Promise::new(env::current_account_id()).function_call(
             "on_src_escrow_created".to_string(),
             near_sdk::serde_json::to_vec(&(order_hash.clone(), escrow_account.clone())).unwrap(),
-            0,
+            NearToken::from_yoctonear(0),
             Gas::from_tgas(5),
         ))
     }
@@ -398,7 +405,8 @@ impl EscrowFactory {
 }
 
 /// Arguments for escrow initialization
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct InitEscrowArgs {
     pub immutables: Immutables,
@@ -406,7 +414,8 @@ pub struct InitEscrowArgs {
 }
 
 /// Factory statistics
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct FactoryStats {
     pub owner: AccountId,

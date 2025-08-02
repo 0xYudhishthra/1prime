@@ -246,7 +246,8 @@ self.transfer_funds_to_maker()
 - [1inch Fusion+ Whitepaper](https://1inch.io/assets/1inch-fusion-plus.pdf)
 - [EVM Implementation](../sample-contracts/)
 - [NEAR SDK Documentation](https://docs.near.org/sdk/rust/introduction)
-- [Cross-Chain Test Examples](../tests/main.spec.ts)
+- [Testing Guide](tests/README.md) - Complete setup and testing instructions
+- [Cross-Chain Examples](tests/examples/) - Interactive swap demonstrations
 
 ## 🚀 **Production Considerations**
 
