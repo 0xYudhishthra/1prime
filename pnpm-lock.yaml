@@ -234,8 +234,17 @@ importers:
       '@1inch/cross-chain-sdk':
         specifier: ^0.1.15
         version: 0.1.15
+<<<<<<< HEAD
 >>>>>>> 64b8093 (Update NEAR contract tests and configurations for pre-deployed contracts)
+<<<<<<< HEAD
 >>>>>>> 6cc7b36 (Update NEAR contract tests and configurations for pre-deployed contracts)
+=======
+=======
+      '@near-js/providers':
+        specifier: '2'
+        version: 2.2.4(@near-js/crypto@2.2.4)(@near-js/transactions@2.2.4)(@near-js/types@2.2.4)(@near-js/utils@2.2.4)
+>>>>>>> 66a30d5 (recreated lock file)
+>>>>>>> a2447bb (recreated lock file)
       '@supabase/supabase-js':
         specifier: ^2.38.5
         version: 2.53.0
