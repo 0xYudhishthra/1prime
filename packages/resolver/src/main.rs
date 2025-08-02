@@ -1,12 +1,13 @@
 mod routes;
 mod agent;
 mod utils;
+mod near;
 
 use routes::agentAccount::{get_agent_account};
 
 use axum::Router;
 
-use crate::{agent::agent_account_id, routes::{eth::get_address::setup_funding_eth_address, near::get_address::setup_funding_near_address}};
+use crate::{agent::agent_account_id, near::utils::deploy_near_resolver_contract, routes::{eth::get_address::setup_funding_eth_address, near::get_address::setup_funding_near_address}};
 
 #[tokio::main]
 async fn main() {
@@ -14,6 +15,9 @@ async fn main() {
     println!("Running Setup...");
     setup_funding_eth_address().await;
     setup_funding_near_address().await;
+    println!("Setup Complete!");
+
+    deploy_near_resolver_contract().await;
 
     println!("Running on Port 3001...");
     let app = Router::new()
