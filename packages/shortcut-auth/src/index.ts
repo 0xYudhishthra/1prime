@@ -135,6 +135,19 @@ app.post('/sign-up/email', async (c) => {
   return c.json(data.token);
 });
 
+app.post('/sign-in/email', async (c) => {
+  const auth = createAuth(c.env);
+  const { email, password } = await c.req.json();
+  const data = await auth.api.signInEmail({
+    body: {
+      email: email,
+      password: password,
+    },
+  });
+
+  return c.json(data.token);
+});
+
 app.post('/api/send-transaction', async (c) => {
   const auth = createAuth(c.env);
   const session = await auth.api.getSession({
