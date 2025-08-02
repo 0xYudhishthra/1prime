@@ -5,33 +5,84 @@ import {
 } from '@zerodev/sdk';
 import { signerToEcdsaValidator } from '@zerodev/ecdsa-validator';
 import { toMultiChainECDSAValidator } from '@zerodev/multi-chain-ecdsa-validator';
+// TODO: Import CAB functionality when available
+// import { createIntentClient } from "@zerodev/intent-client";
 
-import { http, Hex, createPublicClient, zeroAddress, parseEther } from 'viem';
+import {
+  http,
+  Hex,
+  createPublicClient,
+  zeroAddress,
+  parseEther,
+  formatEther,
+  Chain,
+} from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { arbitrumSepolia, sepolia, optimismSepolia } from 'viem/chains';
 import { getEntryPoint, KERNEL_V3_1 } from '@zerodev/sdk/constants';
 import { EntryPointVersion } from 'viem/account-abstraction';
 import { GetKernelVersion, Signer } from '@zerodev/sdk/types';
+import { SUPPORTED_CHAINS, getAllSupportedChains } from './chains';
 
-export const createAccount = async (
-  sepoliaRpc: string,
-  arbitrumSepoliaRpc: string,
-  optimismSepoliaRpc: string
-) => {
-  // Define all chains and their configurations
-  const chains = [
-    { chain: sepolia, rpc: sepoliaRpc, name: 'Sepolia' },
-    {
-      chain: arbitrumSepolia,
-      rpc: arbitrumSepoliaRpc,
-      name: 'Arbitrum Sepolia',
-    },
-    {
-      chain: optimismSepolia,
-      rpc: optimismSepoliaRpc,
-      name: 'Optimism Sepolia',
-    },
-  ];
+// Types for our abstracted functions
+export interface WalletAddresses {
+  smartWallet: {
+    address: string;
+    note: string;
+  };
+  eoa: {
+    address: string;
+    note: string;
+  };
+}
+
+export interface ChainBalance {
+  chainId: number;
+  chainName: string;
+  address: string;
+  balance: {
+    raw: string;
+    formatted: string;
+    symbol: string;
+  };
+}
+
+export interface TokenBalance {
+  token: string;
+  symbol: string;
+  totalBalance: {
+    raw: string;
+    formatted: string;
+  };
+  chainBreakdown: {
+    chainId: number;
+    chainName: string;
+    balance: {
+      raw: string;
+      formatted: string;
+    };
+  }[];
+}
+
+export interface MultiChainBalances {
+  totalBalances: TokenBalance[];
+  chainBreakdown: ChainBalance[];
+  supportedChains: { chainId: number; name: string }[];
+}
+
+export const createMultiChainAccount = async (rpcUrls: {
+  [chainId: number]: string;
+}) => {
+  // Get all supported chains from chains.ts
+  const chains = getAllSupportedChains();
+
+  // Validate we have RPC URLs for all chains
+  for (const chain of chains) {
+    if (!rpcUrls[chain.chainId]) {
+      throw new Error(
+        `Missing RPC URL for chain ${chain.chainId} (${chain.name})`
+      );
+    }
+  }
 
   // Generate a single private key for all chains
   const signerPrivateKey = generatePrivateKey();
@@ -40,21 +91,21 @@ export const createAccount = async (
   const kernelVersion = KERNEL_V3_1;
 
   // Create public clients for all chains
-  const publicClients = chains.map(({ chain, rpc }) =>
+  const publicClients = chains.map(({ chain, chainId }) =>
     createPublicClient({
-      transport: http(rpc),
+      transport: http(rpcUrls[chainId]),
       chain,
     })
   );
 
   // Create multi-chain ECDSA validators for all chains
   const validators = await Promise.all(
-    publicClients.map(async (publicClient, index) =>
+    publicClients.map(async (publicClient) =>
       toMultiChainECDSAValidator(publicClient, {
         entryPoint,
         signer,
         kernelVersion,
-        multiChainIds: chains.map((c) => c.chain.id), // All chain IDs
+        multiChainIds: chains.map((c) => c.chainId),
       })
     )
   );
@@ -84,10 +135,10 @@ export const createAccount = async (
   console.log('Multi-chain smart account address:', smartAccountAddress);
 
   // Create paymaster clients for all chains
-  const paymasterClients = chains.map(({ chain, rpc }) =>
+  const paymasterClients = chains.map(({ chainId }) =>
     createZeroDevPaymasterClient({
-      chain,
-      transport: http(rpc),
+      chain: chains.find((c) => c.chainId === chainId)!.chain,
+      transport: http(rpcUrls[chainId]),
     })
   );
 
@@ -96,7 +147,7 @@ export const createAccount = async (
     createKernelAccountClient({
       account,
       chain: chains[index].chain,
-      bundlerTransport: http(chains[index].rpc),
+      bundlerTransport: http(rpcUrls[chains[index].chainId]),
       client: publicClients[index],
       paymaster: {
         getPaymasterData: (userOperation) => {
@@ -138,7 +189,7 @@ export const createAccount = async (
       console.log(`${chainName} deployment completed`);
 
       return {
-        chainId: chains[index].chain.id,
+        chainId: chains[index].chainId,
         chainName,
         userOpHash,
         transactionHash: receipt.receipt.transactionHash,
@@ -151,29 +202,155 @@ export const createAccount = async (
   return {
     signerPrivateKey,
     smartAccountAddress,
-    chainId: arbitrumSepolia.id, // Primary chain for backward compatibility
+    chainId: chains[0].chainId, // Primary chain
     kernelVersion,
     deployments: deploymentResults,
-    supportedChains: chains.map((c) => ({ chainId: c.chain.id, name: c.name })),
+    supportedChains: chains.map((c) => ({ chainId: c.chainId, name: c.name })),
+  };
+};
+
+export const getWalletAddresses = async (
+  signerPrivateKey: string,
+  smartAccountAddress: string
+): Promise<WalletAddresses> => {
+  const signer = privateKeyToAccount(signerPrivateKey as `0x${string}`);
+
+  return {
+    smartWallet: {
+      address: smartAccountAddress,
+      note: 'Send funds here for smart wallet operations. Same address works on all supported EVM chains.',
+    },
+    eoa: {
+      address: signer.address,
+      note: 'This is your MetaMask address if you import the private key. Smart wallet operations use the address above.',
+    },
+  };
+};
+
+export const getMultiChainBalances = async (
+  signerPrivateKey: string,
+  smartAccountAddress: string,
+  rpcUrls: { [chainId: number]: string }
+): Promise<MultiChainBalances> => {
+  const chains = getAllSupportedChains();
+  const signer = privateKeyToAccount(signerPrivateKey as `0x${string}`);
+
+  // TODO: Implement ZeroDev CAB (Chain-Abstracted Balance) when available
+  // For now, using individual chain queries as the primary method
+  //
+  // Future CAB implementation:
+  // const intentClient = createIntentClient({
+  //   // Configure with your ZeroDev project details
+  // });
+  // const cab = await intentClient.getCAB({
+  //   networks: chains.map(c => c.chainId),
+  //   tokenTickers: ["ETH", "USDC", "WETH"], // optional
+  // });
+
+  console.log('Fetching balances from all supported chains...');
+
+  // Get balances from all chains
+  const chainBreakdown: ChainBalance[] = await Promise.all(
+    chains.map(async ({ chain, chainId, name }) => {
+      try {
+        const publicClient = createPublicClient({
+          transport: http(rpcUrls[chainId]),
+          chain,
+        });
+
+        const balance = await publicClient.getBalance({
+          address: smartAccountAddress as `0x${string}`,
+        });
+
+        console.log(`${name} balance: ${formatEther(balance)} ETH`);
+
+        return {
+          chainId,
+          chainName: name,
+          address: smartAccountAddress,
+          balance: {
+            raw: balance.toString(),
+            formatted: formatEther(balance),
+            symbol: 'ETH',
+          },
+        };
+      } catch (error) {
+        console.error(`Failed to fetch balance for ${name}:`, error);
+        return {
+          chainId,
+          chainName: name,
+          address: smartAccountAddress,
+          balance: {
+            raw: '0',
+            formatted: '0',
+            symbol: 'ETH',
+          },
+        };
+      }
+    })
+  );
+
+  // Calculate total ETH balance across all chains
+  const totalEthBalance = chainBreakdown.reduce(
+    (sum, chain) => sum + BigInt(chain.balance.raw),
+    0n
+  );
+
+  console.log(
+    `Total ETH across all chains: ${formatEther(totalEthBalance)} ETH`
+  );
+
+  // Create unified token balance structure
+  const totalBalances: TokenBalance[] = [
+    {
+      token: 'ETH',
+      symbol: 'ETH',
+      totalBalance: {
+        raw: totalEthBalance.toString(),
+        formatted: formatEther(totalEthBalance),
+      },
+      chainBreakdown: chainBreakdown
+        .map((chain) => ({
+          chainId: chain.chainId,
+          chainName: chain.chainName,
+          balance: {
+            raw: chain.balance.raw,
+            formatted: chain.balance.formatted,
+          },
+        }))
+        .filter((chain) => BigInt(chain.balance.raw) > 0n), // Only include chains with balance
+    },
+  ];
+
+  return {
+    totalBalances,
+    chainBreakdown,
+    supportedChains: chains.map((c) => ({ chainId: c.chainId, name: c.name })),
   };
 };
 
 export const sendTransaction = async (
   zerodevRpc: string,
   signerPrivateKey: string,
-  chain = arbitrumSepolia // Default to arbitrum sepolia for backward compatibility
+  chainId: number = 421614 // Default to Arbitrum Sepolia
 ) => {
+  const chainConfig =
+    SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS];
+  if (!chainConfig) {
+    throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+
   const signer = privateKeyToAccount(signerPrivateKey as `0x${string}`);
   const kernelClient = await getKernelClient(
     zerodevRpc,
     signer,
     '0.7',
     KERNEL_V3_1,
-    chain
+    chainConfig.chain
   );
 
   console.log('Account address:', kernelClient.account.address);
-  console.log('Chain:', chain.name);
+  console.log('Chain:', chainConfig.name);
 
   const txnHash = await kernelClient.sendTransaction({
     to: '0x67E7B18CB3e6f6f80492A4345EFC510233836D86',
@@ -192,7 +369,7 @@ export const getKernelClient = async <
   signer: Signer,
   entryPointVersion_: entryPointVersion,
   kernelVersion: GetKernelVersion<entryPointVersion>,
-  chain = arbitrumSepolia // Default to arbitrum sepolia for backward compatibility
+  chain: Chain
 ) => {
   const publicClient = createPublicClient({
     transport: http(zerodevRpc),
@@ -204,7 +381,7 @@ export const getKernelClient = async <
     signer,
     entryPoint: getEntryPoint(entryPointVersion_),
     kernelVersion,
-    multiChainIds: [sepolia.id, arbitrumSepolia.id, optimismSepolia.id],
+    multiChainIds: getAllSupportedChains().map((c) => c.chainId),
   });
 
   const account = await createKernelAccount(publicClient, {
@@ -233,3 +410,6 @@ export const getKernelClient = async <
     client: publicClient,
   });
 };
+
+// Legacy function name for backward compatibility
+export const createAccount = createMultiChainAccount;
