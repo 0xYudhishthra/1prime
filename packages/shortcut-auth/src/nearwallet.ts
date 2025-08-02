@@ -1,32 +1,32 @@
 import {
   createFundedTestnetAccount,
   generateRandomKeyPair,
-} from "@near-js/client";
-import { JsonRpcProvider, Provider } from "@near-js/providers";
-import { Account } from "@near-js/accounts";
-import { KeyPairString } from "@near-js/crypto";
-import { KeyPairSigner } from "@near-js/signers";
-import { NEAR } from "@near-js/tokens";
+} from '@near-js/client';
+import { JsonRpcProvider, Provider } from '@near-js/providers';
+import { Account } from '@near-js/accounts';
+import { KeyPairString } from '@near-js/crypto';
+import { KeyPairSigner } from '@near-js/signers';
+import { NEAR } from '@near-js/tokens';
 
 export async function createFundedTestnetAccountNear(accountId: string) {
   if (!accountId) {
-    console.log("accountId is required");
+    console.log('accountId is required');
     return;
   }
 
   // create new keypair and persist it to filesystem keystore
-  const keyPair = generateRandomKeyPair("ed25519");
+  const keyPair = generateRandomKeyPair('ed25519');
 
-  console.log("keyPair", keyPair.getPublicKey().toString());
+  console.log('keyPair', keyPair.getPublicKey().toString());
 
   // call funded testnet creation endpoint
   const account = await createFundedTestnetAccount({
     newAccount: accountId,
     newPublicKey: keyPair.getPublicKey().toString(),
-    endpointUrl: "https://helper.testnet.near.org/account",
+    endpointUrl: 'https://helper.testnet.near.org/account',
   });
 
-  console.log("Created funded testnet account");
+  console.log('Created funded testnet account');
   console.log(
     `New Account | ${accountId} | ${keyPair.getPublicKey().toString()}`
   );
@@ -43,7 +43,7 @@ export async function sendNearTransaction(
   keyPair: KeyPairString
 ) {
   const provider = new JsonRpcProvider({
-    url: "https://test.rpc.fastnear.com",
+    url: 'https://test.rpc.fastnear.com',
   }) as Provider;
   const signer = KeyPairSigner.fromSecretKey(keyPair);
   const account = new Account(accountId, provider, signer);
@@ -51,7 +51,7 @@ export async function sendNearTransaction(
   // transfer 0.1 NEAR tokens to receiver.testnet
   const result = await account.transfer({
     token: NEAR,
-    amount: NEAR.toUnits("0.1"),
+    amount: NEAR.toUnits('0.1'),
     receiverId: accountId,
   });
 
@@ -60,13 +60,13 @@ export async function sendNearTransaction(
 
 export async function getNearBalance(accountId: string) {
   const provider = new JsonRpcProvider({
-    url: "https://test.rpc.fastnear.com",
+    url: 'https://test.rpc.fastnear.com',
   }) as Provider;
 
   try {
     const account = await provider.query({
-      request_type: "view_account",
-      finality: "final",
+      request_type: 'view_account',
+      finality: 'final',
       account_id: accountId,
     });
 
@@ -76,10 +76,10 @@ export async function getNearBalance(accountId: string) {
     return {
       raw: accountData.amount,
       formatted: (parseFloat(accountData.amount) / 1e24).toFixed(4),
-      symbol: "NEAR"
+      symbol: 'NEAR',
     };
   } catch (error) {
-    console.error("NEAR balance fetch error:", error);
+    console.error('NEAR balance fetch error:', error);
     throw error;
   }
 }

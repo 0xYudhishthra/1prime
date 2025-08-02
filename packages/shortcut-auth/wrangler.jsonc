@@ -3,9 +3,7 @@
   "name": "shortcut-auth",
   "main": "src/index.ts",
   "compatibility_date": "2025-07-24",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "compatibility_flags": ["nodejs_compat"],
   // "kv_namespaces": [
   //   {
   //     "binding": "MY_KV_NAMESPACE",
