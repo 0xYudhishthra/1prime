@@ -182,24 +182,9 @@ class RelayerApplication {
     // API routes
     this.app.use("/api/v1", createRelayerRoutes(this.relayerService, logger));
 
-    // Root endpoint
+    // Root endpoint - redirect to API
     this.app.get("/", (req, res) => {
-      res.json({
-        name: "1Prime Relayer Service",
-        version: "1.0.0",
-        description:
-          "1inch Fusion+ compatible relayer for EVM <> NEAR cross-chain swaps",
-        environment: config.environment,
-        timestamp: new Date().toISOString(),
-        endpoints: {
-          health: "/api/v1/health",
-          orders: "/api/v1/orders",
-          bids: "/api/v1/bids",
-          secrets: "/api/v1/secrets/reveal",
-          resolvers: "/api/v1/resolvers",
-          stats: "/api/v1/stats",
-        },
-      });
+      res.redirect("/api/v1");
     });
 
     // 404 handler
