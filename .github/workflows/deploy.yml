@@ -25,7 +25,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --filter=shortcut-auth
       - name: Create branch alias
         if: github.ref != 'refs/heads/main'
         id: branch-name
