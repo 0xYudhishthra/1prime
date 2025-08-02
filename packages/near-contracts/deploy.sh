@@ -86,10 +86,11 @@ for account in "$FACTORY_ACCOUNT" "$RESOLVER_ACCOUNT"; do
         echo "✅ Contract account exists: $account"
         
         # Check if account has a contract deployed
-        if near view $account get_stats '{}' 2>/dev/null >/dev/null; then
-            echo "   📦 Contract already deployed (will upgrade)"
-        else
+        CODE_HASH=$(near state $account 2>/dev/null | grep "code_hash" | cut -d"'" -f2)
+        if [[ "$CODE_HASH" == "11111111111111111111111111111111" ]] || [[ -z "$CODE_HASH" ]]; then
             echo "   📭 No contract deployed (will deploy fresh)"
+        else
+            echo "   📦 Contract already deployed (code_hash: ${CODE_HASH:0:8}...)"
         fi
     fi
 done
@@ -121,13 +122,23 @@ near deploy $ESCROW_SRC_TEMPLATE target/near/escrow_src/escrow_src.wasm
 echo "📦 Deploying escrow-dst template to $ESCROW_DST_TEMPLATE..."
 near deploy $ESCROW_DST_TEMPLATE target/near/escrow_dst/escrow_dst.wasm
 
-# Deploy factory contract
-echo "📦 Deploying escrow-factory to $FACTORY_ACCOUNT..."
-near deploy $FACTORY_ACCOUNT target/near/escrow_factory/escrow_factory.wasm
+# Deploy factory contract (if not deployed yet)
+FACTORY_CODE_HASH=$(near state $FACTORY_ACCOUNT 2>/dev/null | grep "code_hash" | cut -d"'" -f2)
+if [[ "$FACTORY_CODE_HASH" == "11111111111111111111111111111111" ]] || [[ -z "$FACTORY_CODE_HASH" ]]; then
+    echo "📦 Deploying escrow-factory to $FACTORY_ACCOUNT..."
+    near deploy $FACTORY_ACCOUNT target/near/escrow_factory/escrow_factory.wasm
+else
+    echo "✅ Factory contract already deployed (code_hash: $FACTORY_CODE_HASH)"
+fi
 
-# Deploy resolver contract
-echo "📦 Deploying resolver to $RESOLVER_ACCOUNT..."
-near deploy $RESOLVER_ACCOUNT target/near/near_resolver/near_resolver.wasm
+# Deploy resolver contract (if not deployed yet)
+RESOLVER_CODE_HASH=$(near state $RESOLVER_ACCOUNT 2>/dev/null | grep "code_hash" | cut -d"'" -f2)
+if [[ "$RESOLVER_CODE_HASH" == "11111111111111111111111111111111" ]] || [[ -z "$RESOLVER_CODE_HASH" ]]; then
+    echo "📦 Deploying resolver to $RESOLVER_ACCOUNT..."
+    near deploy $RESOLVER_ACCOUNT target/near/near_resolver/near_resolver.wasm
+else
+    echo "✅ Resolver contract already deployed (code_hash: $RESOLVER_CODE_HASH)"
+fi
 
 # Step 4: Initialize contracts (only if not already initialized)
 echo "🔧 Checking and initializing contracts..."
@@ -135,8 +146,23 @@ echo "🔧 Checking and initializing contracts..."
 # Check if factory is already initialized
 echo "Checking factory initialization status..."
 if FACTORY_STATS=$(near view $FACTORY_ACCOUNT get_stats '{}' 2>/dev/null); then
-    echo "✅ Factory already initialized"
-    echo "   Factory stats available"
+    echo "⚠️  Factory already initialized, deleting and recreating account..."
+    
+    # Delete the factory account
+    echo "🗑️  Deleting factory account: $FACTORY_ACCOUNT"
+    near delete $FACTORY_ACCOUNT $OWNER_ACCOUNT
+    
+    # Recreate the factory account
+    echo "🔧 Creating factory account: $FACTORY_ACCOUNT"
+    near create-account $FACTORY_ACCOUNT --useFaucet
+    
+    # Deploy factory contract
+    echo "📦 Deploying escrow-factory to $FACTORY_ACCOUNT..."
+    near deploy $FACTORY_ACCOUNT target/near/escrow_factory/escrow_factory.wasm
+    
+    echo "🔧 Initializing factory..."
+    near call $FACTORY_ACCOUNT new "{\"owner\": \"$RESOLVER_ACCOUNT\", \"rescue_delay\": $RESCUE_DELAY, \"escrow_src_template\": \"$ESCROW_SRC_TEMPLATE\", \"escrow_dst_template\": \"$ESCROW_DST_TEMPLATE\"}" --accountId $OWNER_ACCOUNT --gas $GAS_AMOUNT
+    echo "✅ Factory recreated and initialized with templates: $ESCROW_SRC_TEMPLATE, $ESCROW_DST_TEMPLATE"
 else
     echo "🔧 Initializing factory..."
     near call $FACTORY_ACCOUNT new "{\"owner\": \"$RESOLVER_ACCOUNT\", \"rescue_delay\": $RESCUE_DELAY, \"escrow_src_template\": \"$ESCROW_SRC_TEMPLATE\", \"escrow_dst_template\": \"$ESCROW_DST_TEMPLATE\"}" --accountId $OWNER_ACCOUNT --gas $GAS_AMOUNT
@@ -146,9 +172,25 @@ fi
 # Step 5: Initialize resolver (only if not already initialized)
 echo "Checking resolver initialization status..."
 if near view $RESOLVER_ACCOUNT get_owner '{}' 2>/dev/null >/dev/null; then
-    echo "✅ Resolver already initialized"
-    RESOLVER_OWNER=$(near view $RESOLVER_ACCOUNT get_owner '{}' 2>/dev/null | tail -1 | tr -d "'\"")
-    echo "   Current owner: $RESOLVER_OWNER"
+    echo "⚠️  Resolver already initialized, deleting and recreating account..."
+    
+    # Delete the resolver account
+    echo "🗑️  Deleting resolver account: $RESOLVER_ACCOUNT"
+    near delete $RESOLVER_ACCOUNT $OWNER_ACCOUNT
+    
+    # Recreate the resolver account
+    echo "🔧 Creating resolver account: $RESOLVER_ACCOUNT"
+    near create-account $RESOLVER_ACCOUNT --useFaucet
+    
+    # Deploy resolver contract
+    echo "📦 Deploying resolver to $RESOLVER_ACCOUNT..."
+    near deploy $RESOLVER_ACCOUNT target/near/near_resolver/near_resolver.wasm
+    
+    echo "🔧 Initializing resolver..."
+    ETH_RESOLVER_ADDRESS="${ETH_RESOLVER_ADDRESS:-0x0000000000000000000000000000000000000000}"
+    echo "Using ETH resolver address: $ETH_RESOLVER_ADDRESS"
+    near call $RESOLVER_ACCOUNT new "{\"owner\": \"$OWNER_ACCOUNT\", \"escrow_factory\": \"$FACTORY_ACCOUNT\", \"dst_chain_resolver\": \"$ETH_RESOLVER_ADDRESS\"}" --accountId $OWNER_ACCOUNT --gas $GAS_AMOUNT
+    echo "✅ Resolver recreated and initialized with owner: $OWNER_ACCOUNT"
 else
     echo "🔧 Initializing resolver..."
     ETH_RESOLVER_ADDRESS="${ETH_RESOLVER_ADDRESS:-0x0000000000000000000000000000000000000000}"

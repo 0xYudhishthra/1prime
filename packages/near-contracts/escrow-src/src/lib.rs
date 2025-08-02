@@ -6,6 +6,19 @@ use near_sdk::{
 };
 use sha2::{Digest, Sha256};
 
+/// Get the contract WASM code for deployment
+fn get_contract_wasm() -> Vec<u8> {
+    #[cfg(feature = "include-wasm")]
+    {
+        include_bytes!("../../target/near/escrow_src/escrow_src.wasm").to_vec()
+    }
+    #[cfg(not(feature = "include-wasm"))]
+    {
+        // This should not be called in practice without the WASM
+        env::panic_str("Contract WASM not available - rebuild with include-wasm feature")
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 use near_sdk::schemars::{self, JsonSchema};
 
@@ -94,17 +107,20 @@ impl EscrowSrc {
     /// Create a new escrow instance (template factory method)
     #[payable]
     pub fn create_escrow(
+
+        &mut self,
         escrow_account: AccountId,
         immutables: Immutables,
         factory: AccountId,
-        wasm_code: Vec<u8>,
     ) -> Promise {
-        // Create new escrow instance using provided WASM
+        // Create new escrow instance using template
         Promise::new(escrow_account.clone())
             .create_account()
             .add_full_access_key(env::signer_account_pk())
             .transfer(env::attached_deposit())
-            .deploy_contract(wasm_code)
+            .deploy_contract(
+                get_contract_wasm(),
+            )
             .function_call(
                 "init".to_string(),
                 near_sdk::serde_json::to_vec(&CreateEscrowArgs {

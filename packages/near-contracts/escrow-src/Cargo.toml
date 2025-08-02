@@ -6,6 +6,10 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = []
+include-wasm = []
+
 [dependencies]
 near-sdk = { workspace = true }
 serde = { workspace = true }

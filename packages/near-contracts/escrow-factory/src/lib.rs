@@ -73,8 +73,6 @@ pub struct EscrowFactory {
     pub deployed_escrows: LookupMap<String, AccountId>, // orderHash -> escrow_account
     pub escrow_counter: u64,
     pub rescue_delay: u32, // Delay for emergency fund rescue
-    pub escrow_src_wasm: Option<Vec<u8>>, // WASM code for source escrows
-    pub escrow_dst_wasm: Option<Vec<u8>>, // WASM code for destination escrows
 }
 
 #[near_bindgen]
@@ -93,8 +91,6 @@ impl EscrowFactory {
             deployed_escrows: LookupMap::new("escrows".as_bytes()),
             escrow_counter: 0,
             rescue_delay,
-            escrow_src_wasm: None,
-            escrow_dst_wasm: None,
         }
     }
 
@@ -110,20 +106,6 @@ impl EscrowFactory {
         self.assert_owner();
         self.escrow_dst_template = template;
         env::log_str("Destination escrow template updated");
-    }
-
-    /// Set the source escrow WASM code (only owner)
-    pub fn set_escrow_src_wasm(&mut self, wasm_code: Vec<u8>) {
-        self.assert_owner();
-        self.escrow_src_wasm = Some(wasm_code);
-        env::log_str("Source escrow WASM code updated");
-    }
-
-    /// Set the destination escrow WASM code (only owner)
-    pub fn set_escrow_dst_wasm(&mut self, wasm_code: Vec<u8>) {
-        self.assert_owner();
-        self.escrow_dst_wasm = Some(wasm_code);
-        env::log_str("Destination escrow WASM code updated");
     }
 
     /// Create destination escrow contract (equivalent to EVM createDstEscrow)
@@ -175,10 +157,6 @@ impl EscrowFactory {
         // Create escrow using template factory pattern
         let escrow_id: AccountId = escrow_account.parse().unwrap();
 
-        // Get WASM code for destination escrow
-        let wasm_code = self.escrow_dst_wasm.as_ref()
-            .expect("Destination escrow WASM code not set");
-
         // Call the template contract to create a new escrow instance
         Promise::new(self.escrow_dst_template.clone())
             .function_call(
@@ -187,7 +165,6 @@ impl EscrowFactory {
                     "escrow_account": escrow_id.to_string(),
                     "immutables": immutables,
                     "factory": env::current_account_id().to_string(),
-                    "wasm_code": wasm_code,
                 }))
                 .unwrap(),
                 if immutables.token.as_str() == "near" {
@@ -248,10 +225,6 @@ impl EscrowFactory {
             dst_complement
         );
 
-        // Get WASM code for source escrow
-        let wasm_code = self.escrow_src_wasm.as_ref()
-            .expect("Source escrow WASM code not set");
-
         // Create source escrow using template factory pattern
         let promise = Promise::new(self.escrow_src_template.clone()).function_call(
             "create_escrow".to_string(),
@@ -259,7 +232,6 @@ impl EscrowFactory {
                 "escrow_account": escrow_account.to_string(),
                 "immutables": immutables,
                 "factory": env::current_account_id().to_string(),
-                "wasm_code": wasm_code,
             }))
             .unwrap(),
             env::attached_deposit(),
@@ -418,8 +390,6 @@ impl EscrowFactory {
             rescue_delay: self.rescue_delay,
             escrow_src_template: self.escrow_src_template.clone(),
             escrow_dst_template: self.escrow_dst_template.clone(),
-            escrow_src_wasm_set: self.escrow_src_wasm.is_some(),
-            escrow_dst_wasm_set: self.escrow_dst_wasm.is_some(),
         }
     }
 
@@ -452,8 +422,6 @@ pub struct FactoryStats {
     pub rescue_delay: u32,
     pub escrow_src_template: AccountId,
     pub escrow_dst_template: AccountId,
-    pub escrow_src_wasm_set: bool,
-    pub escrow_dst_wasm_set: bool,
 }
 
 impl Timelocks {
