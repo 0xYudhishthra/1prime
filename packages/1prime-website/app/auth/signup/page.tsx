@@ -42,8 +42,20 @@ export default function SignUpPage() {
       );
 
       if (response.ok) {
-        const authToken = await response.text();
-        setToken(authToken);
+        // Try parsing as JSON first, fallback to text
+        let authToken;
+        try {
+          const data = await response.json();
+          authToken =
+            typeof data === 'string' ? data : data.token || data.authToken;
+        } catch {
+          authToken = await response.text();
+        }
+
+        const cleanToken = authToken.trim();
+        setToken(cleanToken);
+        // Also store in localStorage so user can navigate to dashboard
+        localStorage.setItem('authToken', cleanToken);
         setSuccess(true);
       } else {
         const errorData = await response.json();

@@ -42,8 +42,19 @@ export default function SignInPage() {
       );
 
       if (response.ok) {
-        const authToken = await response.text();
-        localStorage.setItem('authToken', authToken);
+        // Try parsing as JSON first, fallback to text
+        let authToken;
+        try {
+          const data = await response.json();
+          authToken =
+            typeof data === 'string' ? data : data.token || data.authToken;
+        } catch {
+          authToken = await response.text();
+        }
+
+        const cleanToken = authToken.trim();
+        localStorage.setItem('authToken', cleanToken);
+        console.log('Token stored:', cleanToken.substring(0, 20) + '...'); // Debug log
         router.push('/dashboard');
       } else {
         const errorData = await response.json();
