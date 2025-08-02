@@ -10,6 +10,11 @@ info:
     2. Store token in Downloads/ folder for Shortcuts access
     3. EVM and NEAR wallets are automatically generated and linked
 
+    ## Multi-Chain Support
+    - EVM chains: Ethereum Sepolia, Arbitrum Sepolia, Optimism Sepolia
+    - Smart wallets deployed on all supported chains with same address
+    - Chain-abstracted balance views for unified wallet management
+
     ## Security Note
     This is a proof-of-concept with simplified security for validation purposes.
   version: 1.0.0
@@ -35,6 +40,7 @@ paths:
       summary: Create new user account with email/password
       description: |
         Creates a new user account and automatically generates both EVM and NEAR wallets.
+        EVM smart wallets are deployed on all supported chains with the same address.
         Returns authentication token that should be stored in Downloads/ folder.
       security: [] # No auth required for signup
       requestBody:
@@ -74,17 +80,64 @@ paths:
               examples:
                 evm_error:
                   value:
-                    error: 'Failed to create evm account'
+                    error: 'Failed to create multi-chain evm account'
                 near_error:
                   value:
                     error: 'Failed to create near account'
+                rpc_missing:
+                  value:
+                    error: 'Missing required ZeroDev RPC URLs for chains: 11155111, 421614'
+
+  /sign-in/email:
+    post:
+      tags:
+        - Authentication
+      summary: Sign in with email/password
+      description: |
+        Authenticates existing user with email and password.
+        Returns authentication token for accessing protected endpoints.
+      security: [] # No auth required for signin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: 'user@example.com'
+                password:
+                  type: string
+                  example: 'password123'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: string
+                description: Bearer token for authentication
+                example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Authentication failed'
 
   /api/send-transaction:
     post:
       tags:
         - EVM Transactions
       summary: Send EVM transaction
-      description: Sends a test EVM transaction using the user's smart wallet
+      description: Sends a test EVM transaction using the user's smart wallet on Arbitrum Sepolia
       responses:
         '200':
           description: Transaction sent successfully
@@ -99,8 +152,22 @@ paths:
                     example: '0x1234567890abcdef...'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
         '500':
-          $ref: '#/components/responses/ServerError'
+          description: Failed to send transaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Failed to send transaction'
 
   /api/send-near-transaction:
     post:
@@ -130,6 +197,14 @@ paths:
                           type: object
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
         '500':
           description: Server error or no NEAR account found
           content:
@@ -140,6 +215,9 @@ paths:
                 no_account:
                   value:
                     error: 'No near account found'
+                transaction_failed:
+                  value:
+                    error: 'Failed to send NEAR transaction'
 
   /api/random-number:
     get:
@@ -230,8 +308,10 @@ paths:
     get:
       tags:
         - Wallet
-      summary: Get wallet addresses
-      description: Returns both EVM and NEAR wallet addresses. EVM address works on all supported testnet chains.
+      summary: Get wallet addresses for all supported chains
+      description: |
+        Returns both EVM (smart wallet and EOA) and NEAR wallet addresses.
+        The smart wallet address is the same across all supported EVM testnet chains.
       responses:
         '200':
           description: Wallet addresses retrieved successfully
@@ -243,73 +323,31 @@ paths:
                   evm:
                     type: object
                     properties:
-                      address:
-                        type: string
-                        example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
-                      note:
-                        type: string
-                        example: 'Same address works on all supported EVM chains (testnets)'
+                      smartWallet:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                            example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                          note:
+                            type: string
+                            example: 'Send funds here for smart wallet operations. Same address works on all supported EVM chains.'
+                      eoa:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                            example: '0xE86eef3Dfc60939155Cb2139fb32f41e6996ba72'
+                          note:
+                            type: string
+                            example: 'This is your MetaMask address if you import the private key. Smart wallet operations use the address above.'
                   near:
                     type: object
                     properties:
                       accountId:
                         type: string
                         example: 'ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Wallet not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                error: 'Wallet not found'
-
-  /api/wallet/export-private-key:
-    get:
-      tags:
-        - Wallet
-      summary: Export private key (DEVELOPMENT ONLY)
-      description: |
-        ⚠️ DEVELOPMENT ONLY - Exports the signer private key for MetaMask import.
-
-        **SECURITY WARNING**: This endpoint exposes sensitive private key information.
-        Remove this endpoint in production environments.
-
-        The same private key works on all EVM chains but generates different smart wallet addresses.
-      responses:
-        '200':
-          description: Private key exported successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  warning:
-                    type: string
-                    example: '⚠️ DEVELOPMENT ONLY - Keep this private key secure! Never share it!'
-                  signerPrivateKey:
-                    type: string
-                    description: Private key for MetaMask import (keep secure!)
-                    example: '0x1234567890abcdef...'
-                  signerAddress:
-                    type: string
-                    description: EOA address derived from private key (same on all chains)
-                    example: '0xabcdef1234567890...'
-                  smartWalletInfo:
-                    type: object
-                    properties:
-                      address:
-                        type: string
-                        example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
-                      deployedOnChain:
-                        type: integer
-                        example: 421614
-                      kernelVersion:
-                        type: string
-                        example: 'v3.1'
-                  chains:
+                  supportedChains:
                     type: array
                     items:
                       type: object
@@ -320,26 +358,15 @@ paths:
                         name:
                           type: string
                           example: 'Arbitrum Sepolia'
-                        signerAddress:
-                          type: string
-                          description: EOA address (same across all chains)
-                          example: '0xabcdef1234567890...'
-                        smartWalletAddress:
-                          type: string
-                          description: Smart wallet address
-                          example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
-                        note:
-                          type: string
-                          example: 'Smart wallet addresses may differ on different chains if deployed separately'
-                  instructions:
+                  usage:
                     type: object
                     properties:
-                      metamask:
+                      deposits:
                         type: string
-                        example: "Import the 'signerPrivateKey' into MetaMask. You'll see the 'signerAddress', not the smart wallet address."
-                      networks:
+                        example: 'Send EVM funds to evm.smartWallet.address for best experience'
+                      transactions:
                         type: string
-                        example: 'Add testnet networks to MetaMask to see your signer account on different chains.'
+                        example: 'All smart wallet operations use evm.smartWallet.address across all supported chains'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -350,22 +377,23 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: 'Wallet not found'
+        '500':
+          description: Failed to fetch addresses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Failed to fetch addresses'
 
   /api/wallet/balances:
     get:
       tags:
         - Wallet
-      summary: Get multi-chain wallet balances for specific testnet chain
-      description: Returns current balances for both EVM (specific testnet chain) and NEAR wallets
-      parameters:
-        - name: chainId
-          in: query
-          required: true
-          description: EVM Chain ID (11155111=Ethereum Sepolia, 421614=Arbitrum Sepolia, 11155420=Optimism Sepolia)
-          schema:
-            type: integer
-            enum: [11155111, 421614, 11155420]
-            example: 421614
+      summary: Get chain-abstracted wallet balances across all chains
+      description: |
+        Returns unified balances across all supported EVM chains using ZeroDev's multi-chain capabilities,
+        plus individual chain breakdown and NEAR balance. No parameters required - automatically fetches from all chains.
       responses:
         '200':
           description: Wallet balances retrieved successfully
@@ -380,26 +408,88 @@ paths:
                       address:
                         type: string
                         example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
-                      chainId:
-                        type: integer
-                        example: 421614
-                      chainName:
+                      totalBalances:
+                        type: array
+                        description: Chain-abstracted token balances
+                        items:
+                          type: object
+                          properties:
+                            token:
+                              type: string
+                              example: 'ETH'
+                            symbol:
+                              type: string
+                              example: 'ETH'
+                            totalBalance:
+                              type: object
+                              properties:
+                                raw:
+                                  type: string
+                                  example: '3000000000000000000'
+                                formatted:
+                                  type: string
+                                  example: '3.0'
+                            chainBreakdown:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  chainId:
+                                    type: integer
+                                    example: 421614
+                                  chainName:
+                                    type: string
+                                    example: 'Arbitrum Sepolia'
+                                  balance:
+                                    type: object
+                                    properties:
+                                      raw:
+                                        type: string
+                                        example: '1000000000000000000'
+                                      formatted:
+                                        type: string
+                                        example: '1.0'
+                      chainBreakdown:
+                        type: array
+                        description: Individual chain balances
+                        items:
+                          type: object
+                          properties:
+                            chainId:
+                              type: integer
+                              example: 421614
+                            chainName:
+                              type: string
+                              example: 'Arbitrum Sepolia'
+                            address:
+                              type: string
+                              example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                            balance:
+                              type: object
+                              properties:
+                                raw:
+                                  type: string
+                                  example: '1000000000000000000'
+                                formatted:
+                                  type: string
+                                  example: '1.0'
+                                symbol:
+                                  type: string
+                                  example: 'ETH'
+                      supportedChains:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            chainId:
+                              type: integer
+                              example: 421614
+                            name:
+                              type: string
+                              example: 'Arbitrum Sepolia'
+                      note:
                         type: string
-                        example: 'Arbitrum Sepolia'
-                      balance:
-                        type: object
-                        properties:
-                          raw:
-                            type: string
-                            description: Balance in wei (smallest unit)
-                            example: '1000000000000000000'
-                          formatted:
-                            type: string
-                            description: Human-readable balance
-                            example: '1.0'
-                          symbol:
-                            type: string
-                            example: 'ETH'
+                        example: 'Chain-abstracted balances show your unified balance across all supported EVM chains'
                   near:
                     type: object
                     properties:
@@ -411,28 +501,28 @@ paths:
                         properties:
                           raw:
                             type: string
-                            description: Balance in yoctoNEAR (smallest unit)
                             example: '5000000000000000000000000'
                           formatted:
                             type: string
-                            description: Human-readable balance
                             example: '5.0000'
                           symbol:
                             type: string
                             example: 'NEAR'
-        '400':
-          description: Missing or invalid chainId parameter
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                missing_chain:
-                  value:
-                    error: 'chainId query parameter is required'
-                invalid_chain:
-                  value:
-                    error: 'Invalid chainId parameter'
+                  summary:
+                    type: object
+                    properties:
+                      totalEvmChains:
+                        type: integer
+                        example: 3
+                        description: Total number of supported EVM chains
+                      evmChainsWithBalance:
+                        type: integer
+                        example: 2
+                        description: Number of EVM chains with non-zero balance
+                      hasNearBalance:
+                        type: boolean
+                        example: true
+                        description: Whether NEAR account has non-zero balance
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -485,7 +575,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Bearer token obtained from /sign-up/email endpoint.
+        Bearer token obtained from /sign-up/email or /sign-in/email endpoints.
         Store this token in Downloads/ folder for Apple Shortcuts access.
 
   schemas:
@@ -542,7 +632,7 @@ tags:
   - name: Authentication
     description: User authentication and account management
   - name: Wallet
-    description: Wallet address and balance operations
+    description: Multi-chain wallet address and balance operations
   - name: EVM Transactions
     description: Ethereum Virtual Machine transaction operations
   - name: NEAR Transactions
@@ -557,8 +647,11 @@ x-future-endpoints:
     - POST /api/deposit/verify - Verify deposit transaction
 
   swap:
-    - GET /api/swap/chains - Get supported EVM chains (deprecated - use /api/wallet/supported-chains)
     - GET /api/swap/tokens/{chain} - Get supported tokens for chain
     - POST /api/swap/quote - Get swap quote using 1inch Fusion+
     - POST /api/swap/execute - Execute swap order
     - GET /api/swap/status/{orderId} - Check swap status
+
+  wallet:
+    - POST /api/wallet/transfer - Transfer funds between chains or to/from EOA
+    - GET /api/wallet/transactions - Get transaction history
