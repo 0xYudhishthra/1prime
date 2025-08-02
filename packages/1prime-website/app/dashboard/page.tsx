@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -70,9 +71,20 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
 
   const fetchWalletData = async () => {
+    // Check if we're on the client side
+    if (typeof window === 'undefined') {
+      setLoading(false);
+      return;
+    }
+
     const token = localStorage.getItem('authToken');
+    console.log(
+      'Retrieved token:',
+      token ? token.substring(0, 20) + '...' : 'null'
+    ); // Debug log
     if (!token) {
       setError('No auth token found. Please sign in.');
       setLoading(false);
@@ -80,23 +92,40 @@ export default function DashboardPage() {
     }
 
     try {
+      console.log(
+        'Making API call with token:',
+        token.substring(0, 20) + '...'
+      ); // Debug log
       const response = await fetch(
         'https://shortcut-auth.tanweihup.workers.dev/api/wallet/balances',
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            accept: 'application/json',
+            'Content-Type': 'application/json',
           },
         }
       );
 
+      console.log('Response status:', response.status); // Debug log
       if (response.ok) {
         const data = await response.json();
         setWalletData(data);
         setError('');
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to fetch wallet data');
+        // If unauthorized, clear the token and redirect to sign in
+        if (response.status === 401) {
+          console.log('401 Unauthorized - clearing token and redirecting');
+          localStorage.removeItem('authToken');
+          router.push('/auth/signin');
+          return;
+        } else {
+          try {
+            const errorData = await response.json();
+            setError(errorData.error || 'Failed to fetch wallet data');
+          } catch {
+            setError(`HTTP ${response.status}: Failed to fetch wallet data`);
+          }
+        }
       }
     } catch (err) {
       setError('Network error. Please try again.');
