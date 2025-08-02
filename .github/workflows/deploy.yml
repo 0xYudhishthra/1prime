@@ -33,7 +33,6 @@ jobs:
           apiToken: kikJ0qrh29HKr1YsTPH4zu5M-8C5lRv8-42P3B0K
           accountId: ff635326d89dc7f0237691048abd1ce8
           workingDirectory: packages/shortcut-auth
-          packageManager: pnpm
           command: deploy --minify
       - name: Deploy Worker (Preview)
         if: github.ref != 'refs/heads/main'
@@ -42,7 +41,6 @@ jobs:
           apiToken: kikJ0qrh29HKr1YsTPH4zu5M-8C5lRv8-42P3B0K
           accountId: ff635326d89dc7f0237691048abd1ce8
           workingDirectory: packages/shortcut-auth
-          packageManager: pnpm
           command: deploy --minify
       - name: Comment Preview URL
         if: github.ref != 'refs/heads/main'
