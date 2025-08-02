@@ -4,6 +4,7 @@ import {
   timestamp,
   boolean,
   integer,
+  json,
 } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
@@ -75,6 +76,10 @@ export const smartWallet = pgTable("smart_wallet", {
   evm_smartAccountAddress: text("evm_smart_account_address").notNull(),
   evm_chainId: integer("evm_chain_id").notNull().default(11155111), // sepolia
   evm_kernelVersion: text("evm_kernel_version").notNull().default("v3.1"),
+  evm_supportedChains: json("evm_supported_chains").$type<{
+    chainId: number;
+    name: string;
+  }[]>().notNull().default([]),
   near_accountId: text("near_account_id"),
   near_keypair: text("near_keypair"),
   createdAt: timestamp("created_at")

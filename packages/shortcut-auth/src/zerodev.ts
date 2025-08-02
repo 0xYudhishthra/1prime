@@ -4,6 +4,8 @@ import {
 	createKernelAccountClient,
 } from "@zerodev/sdk";
 import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
+import { toMultiChainECDSAValidator } from "@zerodev/multi-chain-ecdsa-validator";
+
 import {
 	http,
 	Hex,
@@ -15,87 +17,147 @@ import {
 	generatePrivateKey,
 	privateKeyToAccount,
 } from "viem/accounts";
-import { arbitrumSepolia } from "viem/chains";
+import { arbitrumSepolia, sepolia, optimismSepolia } from "viem/chains";
 import { getEntryPoint, KERNEL_V3_1 } from "@zerodev/sdk/constants";
 import { EntryPointVersion } from "viem/account-abstraction";
 import { GetKernelVersion, Signer } from "@zerodev/sdk/types";
 
-export const createAccount = async (zerodevRpc: string) => {
-	const chain = arbitrumSepolia;
-	const publicClient = createPublicClient({
-		// Use your own RPC for public client in production
-		transport: http(zerodevRpc),
-		chain,
-	});
+export const createAccount = async (
+	sepoliaRpc: string,
+	arbitrumSepoliaRpc: string,
+	optimismSepoliaRpc: string
+) => {
+	// Define all chains and their configurations
+	const chains = [
+		{ chain: sepolia, rpc: sepoliaRpc, name: "Sepolia" },
+		{ chain: arbitrumSepolia, rpc: arbitrumSepoliaRpc, name: "Arbitrum Sepolia" },
+		{ chain: optimismSepolia, rpc: optimismSepoliaRpc, name: "Optimism Sepolia" }
+	];
 
+	// Generate a single private key for all chains
 	const signerPrivateKey = generatePrivateKey();
 	const signer = privateKeyToAccount(signerPrivateKey);
 	const entryPoint = getEntryPoint("0.7");
 	const kernelVersion = KERNEL_V3_1;
-	const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
-		signer,
-		entryPoint,
-		kernelVersion,
-	});
 
-	const account = await createKernelAccount(publicClient, {
-		plugins: {
-			sudo: ecdsaValidator,
-		},
-		entryPoint,
-		kernelVersion,
-	});
-	console.log("My account:", account.address);
+	// Create public clients for all chains
+	const publicClients = chains.map(({ chain, rpc }) => 
+		createPublicClient({
+			transport: http(rpc),
+			chain,
+		})
+	);
 
-	const paymasterClient = createZeroDevPaymasterClient({
-		chain,
-		transport: http(zerodevRpc),
-	});
+	// Create multi-chain ECDSA validators for all chains
+	const validators = await Promise.all(
+		publicClients.map(async (publicClient, index) => 
+			toMultiChainECDSAValidator(publicClient, {
+				entryPoint,
+				signer,
+				kernelVersion,
+				multiChainIds: chains.map(c => c.chain.id), // All chain IDs
+			})
+		)
+	);
 
-	const kernelClient = createKernelAccountClient({
-		account,
-		chain,
-		bundlerTransport: http(zerodevRpc),
-		client: publicClient,
-		paymaster: {
-			getPaymasterData: (userOperation) => {
-				return paymasterClient.sponsorUserOperation({
-					userOperation,
-				});
+	// Create kernel accounts for all chains
+	const accounts = await Promise.all(
+		publicClients.map(async (publicClient, index) =>
+			createKernelAccount(publicClient, {
+				plugins: {
+					sudo: validators[index],
+				},
+				entryPoint,
+				kernelVersion,
+			})
+		)
+	);
+
+	// Verify all accounts have the same address
+	const smartAccountAddress = accounts[0].address;
+	const allSameAddress = accounts.every(account => account.address === smartAccountAddress);
+	if (!allSameAddress) {
+		throw new Error("Multi-chain accounts do not have the same address");
+	}
+
+	console.log("Multi-chain smart account address:", smartAccountAddress);
+
+	// Create paymaster clients for all chains
+	const paymasterClients = chains.map(({ chain, rpc }) =>
+		createZeroDevPaymasterClient({
+			chain,
+			transport: http(rpc),
+		})
+	);
+
+	// Create kernel clients for all chains
+	const kernelClients = accounts.map((account, index) =>
+		createKernelAccountClient({
+			account,
+			chain: chains[index].chain,
+			bundlerTransport: http(chains[index].rpc),
+			client: publicClients[index],
+			paymaster: {
+				getPaymasterData: (userOperation) => {
+					return paymasterClients[index].sponsorUserOperation({
+						userOperation,
+					});
+				},
 			},
-		},
-	});
+		})
+	);
 
-	const userOpHash = await kernelClient.sendUserOperation({
-		callData: await account.encodeCalls([
-			{
-				to: zeroAddress,
-				value: BigInt(0),
-				data: "0x",
-			},
-		]),
-	});
+	// Deploy smart wallets on all chains by sending dummy transactions
+	console.log("Deploying smart wallets on all chains...");
+	const deploymentResults = await Promise.all(
+		kernelClients.map(async (kernelClient, index) => {
+			const chainName = chains[index].name;
+			console.log(`Deploying on ${chainName}...`);
 
-	console.log("userOp hash:", userOpHash);
+			const userOpHash = await kernelClient.sendUserOperation({
+				callData: await kernelClient.account.encodeCalls([
+					{
+						to: zeroAddress,
+						value: BigInt(0),
+						data: "0x",
+					},
+				]),
+			});
 
-	const _receipt = await kernelClient.waitForUserOperationReceipt({
-		hash: userOpHash,
-	});
-	console.log("bundle txn hash: ", _receipt.receipt.transactionHash);
+			console.log(`${chainName} userOp hash:`, userOpHash);
 
-	console.log("userOp completed");
+			const receipt = await kernelClient.waitForUserOperationReceipt({
+				hash: userOpHash,
+			});
+
+			console.log(`${chainName} deployment txn hash:`, receipt.receipt.transactionHash);
+			console.log(`${chainName} deployment completed`);
+
+			return {
+				chainId: chains[index].chain.id,
+				chainName,
+				userOpHash,
+				transactionHash: receipt.receipt.transactionHash,
+			};
+		})
+	);
+
+	console.log("All smart wallets deployed successfully across all chains");
 
 	return {
 		signerPrivateKey,
-		smartAccountAddress: account.address,
-		chainId: chain.id,
+		smartAccountAddress,
+		chainId: arbitrumSepolia.id, // Primary chain for backward compatibility
 		kernelVersion,
+		deployments: deploymentResults,
+		supportedChains: chains.map(c => ({ chainId: c.chain.id, name: c.name })),
 	};
 };
 
 export const sendTransaction = async (
 	zerodevRpc: string,
-	signerPrivateKey: string
+	signerPrivateKey: string,
+	chain = arbitrumSepolia // Default to arbitrum sepolia for backward compatibility
 ) => {
 	const signer = privateKeyToAccount(
 		signerPrivateKey as `0x${string}`
@@ -104,10 +166,12 @@ export const sendTransaction = async (
 		zerodevRpc,
 		signer,
 		"0.7",
-		KERNEL_V3_1
+		KERNEL_V3_1,
+		chain
 	);
 
 	console.log("Account address:", kernelClient.account.address);
+	console.log("Chain:", chain.name);
 
 	const txnHash = await kernelClient.sendTransaction({
 		to: "0x67E7B18CB3e6f6f80492A4345EFC510233836D86",
@@ -125,23 +189,25 @@ export const getKernelClient = async <
 	zerodevRpc: string,
 	signer: Signer,
 	entryPointVersion_: entryPointVersion,
-	kernelVersion: GetKernelVersion<entryPointVersion>
+	kernelVersion: GetKernelVersion<entryPointVersion>,
+	chain = arbitrumSepolia // Default to arbitrum sepolia for backward compatibility
 ) => {
-	const chain = arbitrumSepolia;
 	const publicClient = createPublicClient({
 		transport: http(zerodevRpc),
 		chain,
 	});
 
-	const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
+	// Use multi-chain validator for consistency with createAccount
+	const multiChainValidator = await toMultiChainECDSAValidator(publicClient, {
 		signer,
 		entryPoint: getEntryPoint(entryPointVersion_),
 		kernelVersion,
+		multiChainIds: [sepolia.id, arbitrumSepolia.id, optimismSepolia.id],
 	});
 
 	const account = await createKernelAccount(publicClient, {
 		plugins: {
-			sudo: ecdsaValidator,
+			sudo: multiChainValidator,
 		},
 		entryPoint: getEntryPoint(entryPointVersion_),
 		kernelVersion,

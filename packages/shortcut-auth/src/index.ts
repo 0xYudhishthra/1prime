@@ -49,6 +49,7 @@ app.post("/sign-up/email", async c => {
   const db = createDb(c.env.DATABASE_URL);
   const auth = createAuth(c.env);
   const { email, password } = await c.req.json();
+  console.log("email", email);
   const data = await auth.api.signUpEmail({
     body: {
       name: "John Doe",
@@ -60,11 +61,20 @@ app.post("/sign-up/email", async c => {
 
   const nameToNearAccountId = data.user.id.toLowerCase();
 
-  const { signerPrivateKey, smartAccountAddress, chainId, kernelVersion } =
-    await createAccount(c.env.ZERODEV_RPC);
+  // Validate all required environment variables
+  if (!c.env.ZERODEV_ETHEREUM_SEPOLIA_RPC || !c.env.ZERODEV_ARBITRUM_SEPOLIA_RPC || !c.env.ZERODEV_OPTIMISM_SEPOLIA_RPC) {
+    return c.json({ error: "Missing required ZeroDev RPC URLs for multi-chain deployment" }, 500);
+  }
 
-  if (!signerPrivateKey || !smartAccountAddress || !chainId || !kernelVersion) {
-    return c.json({ error: "Failed to create evm account" }, 500);
+  const { signerPrivateKey, smartAccountAddress, chainId, kernelVersion, deployments, supportedChains } =
+    await createAccount(
+      c.env.ZERODEV_ETHEREUM_SEPOLIA_RPC,
+      c.env.ZERODEV_ARBITRUM_SEPOLIA_RPC,
+      c.env.ZERODEV_OPTIMISM_SEPOLIA_RPC
+    );
+
+  if (!signerPrivateKey || !smartAccountAddress || !chainId || !kernelVersion || !deployments || !supportedChains) {
+    return c.json({ error: "Failed to create multi-chain evm account" }, 500);
   }
 
   const nearAccount = await createFundedTestnetAccountNear(
@@ -81,8 +91,21 @@ app.post("/sign-up/email", async c => {
     evm_smartAccountAddress: smartAccountAddress,
     evm_chainId: chainId,
     evm_kernelVersion: kernelVersion,
+    evm_supportedChains: supportedChains,
     near_accountId: nearAccount.accountId,
     near_keypair: nearAccount.keyPair.toString(),
+  });
+
+  // Log multi-chain deployment information
+  console.log("Multi-chain smart wallet created:", {
+    userId: data.user.id,
+    smartAccountAddress,
+    supportedChains,
+    deployments: deployments.map(d => ({
+      chainId: d.chainId,
+      chainName: d.chainName,
+      transactionHash: d.transactionHash
+    }))
   });
 
   console.log(data);
@@ -107,7 +130,7 @@ app.post("/api/send-transaction", async c => {
     .limit(1);
 
   const txnHash = await sendTransaction(
-    c.env.ZERODEV_RPC,
+    c.env.ZERODEV_ARBITRUM_SEPOLIA_RPC,
     wallet[0].evm_signerPrivateKey
   );
 

@@ -6,11 +6,6 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "vars": {
-    "BETTER_AUTH_SECRET": "your-secret-key-here",
-    "BETTER_AUTH_URL": "http://localhost:8787",
-    "DATABASE_URL": "your-database-url-here"
-  },
   // "kv_namespaces": [
   //   {
   //     "binding": "MY_KV_NAMESPACE",
