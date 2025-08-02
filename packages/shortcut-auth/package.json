@@ -8,6 +8,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@hono/node-server": "1.18.1",
     "@near-js/accounts": "2.2.4",
     "@near-js/client": "2.2.4",
     "@near-js/crypto": "2.2.4",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.6.14",
+    "tsx": "4.20.3",
     "wrangler": "^4.4.0"
   }
 }
