@@ -2,7 +2,9 @@ mod routes;
 mod agent;
 mod utils;
 mod near;
+mod eth;
 
+use progenitor::generate_api;
 use routes::agentAccount::{get_agent_account};
 
 use axum::Router;
@@ -13,11 +15,21 @@ use crate::{agent::agent_account_id, near::utils::deploy_near_resolver_contract,
 async fn main() {
 
     println!("Running Setup...");
-    setup_funding_eth_address().await;
-    setup_funding_near_address().await;
+    //setup_funding_eth_address().await;
+    //setup_funding_near_address().await;
     println!("Setup Complete!");
 
-    deploy_near_resolver_contract().await;
+    //deploy_near_resolver_contract().await;
+
+    tokio::spawn(async {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
+        loop {
+            interval.tick().await;
+            // Replace with your actual API call
+            // Example: let response = reqwest::get("https://api.example.com/endpoint").await;
+            utils::read_order().await;
+        }
+    });
 
     println!("Running on Port 3001...");
     let app = Router::new()
