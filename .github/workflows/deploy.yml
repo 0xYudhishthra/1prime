@@ -55,7 +55,7 @@ jobs:
         with:
           script: |
             const alias = '${{ steps.branch-name.outputs.alias }}';
-            const previewUrl = `https://${alias}-shortcut-auth.${context.repo.owner}.workers.dev`;
+            const previewUrl = `https://${alias}-shortcut-auth.tanweihup.workers.dev`;
             console.log(`Preview deployment available at: ${previewUrl}`);
             
             // If this was triggered by a PR, comment the URL
