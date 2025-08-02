@@ -18,6 +18,8 @@ import { KeyPairString } from '@near-js/crypto';
 import { cors } from 'hono/cors';
 import { getAllSupportedChains } from './chains';
 
+import { keccak256, toUtf8Bytes } from 'ethers';
+
 const app = new Hono<{
   Bindings: CloudflareBindings;
 }>();
@@ -381,6 +383,14 @@ app.get('/api/wallet/balances', async (c) => {
     console.error('Balance fetch error:', error);
     return c.json({ error: 'Failed to fetch balances' }, 500);
   }
+});
+
+app.post("/hash-random-number", async (c) => {
+  const { number } = await c.req.json();
+  console.log(number);
+  const hash = keccak256(toUtf8Bytes(number));
+  console.log(hash);
+  return c.json({ hash });
 });
 
 export default app;
