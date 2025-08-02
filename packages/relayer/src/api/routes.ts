@@ -4,28 +4,16 @@ import type { Logger } from "winston";
 import { RelayerService } from "../services/relayer";
 import {
   ApiResponse,
-  CreateOrderRequest,
   ResolverBidRequest,
   SecretRevealRequest,
   RelayerStatus,
   SDKCrossChainOrder,
+  GenerateOrderRequest,
+  SubmitSignedOrderRequest,
+  ClaimOrderRequest,
+  EscrowDeploymentConfirmation,
 } from "../types";
 import { SDKOrderMapper } from "../utils/sdk-mapper";
-
-// Validation schemas
-const createOrderSchema = Joi.object({
-  sourceChain: Joi.string().required(),
-  destinationChain: Joi.string().required(),
-  sourceToken: Joi.string().required(),
-  destinationToken: Joi.string().required(),
-  sourceAmount: Joi.string().required(),
-  destinationAmount: Joi.string().required(),
-  timeout: Joi.number().integer().min(Date.now()).required(),
-  auctionDuration: Joi.number().integer().min(30000).max(300000).optional(),
-  initialRateBump: Joi.number().integer().min(0).max(10000).optional(),
-  signature: Joi.string().required(),
-  nonce: Joi.string().required(),
-});
 
 // SDK CrossChainOrder validation schema
 const sdkCrossChainOrderSchema = Joi.object({
@@ -106,9 +94,44 @@ const resolverBidSchema = Joi.object({
 });
 
 const secretRevealSchema = Joi.object({
-  orderHash: Joi.string().hex().length(64).required(),
   secret: Joi.string().required(),
   proof: Joi.string().required(),
+  signature: Joi.string().required(),
+});
+
+const generateOrderSchema = Joi.object({
+  userAddress: Joi.string().required(),
+  amount: Joi.string().required(),
+  fromToken: Joi.string().required(),
+  toToken: Joi.string().required(),
+  fromChain: Joi.string().required(),
+  toChain: Joi.string().required(),
+  secretHash: Joi.string().required(),
+});
+
+const submitSignedOrderSchema = Joi.object({
+  orderHash: Joi.string().hex().length(64).required(),
+  signedOrder: Joi.object().required(), // SDK CrossChainOrder - flexible validation
+  signature: Joi.string().required(),
+});
+
+const updateOrderStateSchema = Joi.object({
+  newState: Joi.string().required(),
+  resolverAddress: Joi.string().required(),
+});
+
+const claimOrderSchema = Joi.object({
+  resolverAddress: Joi.string().required(),
+  estimatedGas: Joi.number().integer().min(0).required(),
+  signature: Joi.string().required(),
+});
+
+const escrowDeploymentSchema = Joi.object({
+  escrowType: Joi.string().valid("src", "dst").required(),
+  escrowAddress: Joi.string().required(),
+  transactionHash: Joi.string().required(),
+  blockNumber: Joi.number().integer().min(0).required(),
+  resolverAddress: Joi.string().required(),
   signature: Joi.string().required(),
 });
 
@@ -186,58 +209,65 @@ export function createRelayerRoutes(
           enabled: true,
           endpoint: "/ws",
           events: [
+            "order_created",
             "order_updates",
+            "auction_started",
             "auction_progress",
-            "partial_fills",
-            "gas_adjustments",
+            "phase_transition",
+            "secret_revealed",
+            "order_completed",
+            "order_cancelled",
           ],
         },
 
         // Complete API endpoints
         endpoints: {
-          // Health & Status
-          "GET /health": {
-            description: "Get relayer health status and chain connectivity",
-            body: null,
-            response: "System health information",
-          },
-
+          // Health & Documentation
           "GET /": {
             description: "Get API documentation and available endpoints",
             body: null,
             response: "This documentation",
           },
 
-          // Order Management
-          "POST /orders": {
-            description:
-              "Create new cross-chain swap order (supports legacy and SDK formats)",
-            headers: {
-              "Content-Type": "application/json",
-              "x-maker-address": "0x... (for legacy format)",
-            },
-            body: {
-              legacy: {
-                sourceChain: "ethereum | base | bsc | polygon | arbitrum",
-                destinationChain:
-                  "near | ethereum | base | bsc | polygon | arbitrum",
-                sourceToken: "Token symbol or address",
-                destinationToken: "Token symbol or address",
-                sourceAmount: "Amount in wei/smallest unit",
-                destinationAmount: "Amount in wei/smallest unit",
-                timeout: "Unix timestamp",
-                signature: "0x...",
-                nonce: "Unique nonce",
-              },
-              sdk: {
-                sdkOrder: "SDK CrossChainOrder object with nested structure",
-                signature: "0x...",
-              },
-            },
-            response: "Order status with orderHash",
+          "GET /health": {
+            description: "Get relayer health status and chain connectivity",
+            body: null,
+            response: "System health information",
           },
 
-          "GET /orders/{orderHash}": {
+          // Order Management (New Flow)
+          "POST /orders/prepare": {
+            description:
+              "Generate unsigned Fusion+ order for frontend signing (Steps 3+4+5)",
+            body: {
+              userAddress: "0x... (maker address)",
+              amount: "Amount in wei/smallest unit",
+              fromToken: "Source token address or symbol",
+              toToken: "Destination token address or symbol",
+              fromChain: "ethereum | base | bsc | polygon | arbitrum",
+              toChain: "near | ethereum | base | bsc | polygon | arbitrum",
+              secretHash: "Previously generated secret hash from frontend",
+            },
+            response: "Unsigned Fusion+ order and orderHash for signing",
+          },
+
+          "POST /orders/submit": {
+            description: "Submit signed Fusion+ order to relayer (Step 6)",
+            body: {
+              orderHash: "0x... (from /orders/prepare response)",
+              signedOrder: "Signed SDK CrossChainOrder from frontend",
+              signature: "0x... (user wallet signature)",
+            },
+            response: "Order status and relayer processing confirmation",
+          },
+
+          "GET /orders": {
+            description: "Get all currently active orders",
+            body: null,
+            response: "List of active orders with basic status information",
+          },
+
+          "GET /orders/{hash}/status": {
             description: "Get order status and details",
             body: null,
             response: "Complete order information and current phase",
@@ -267,11 +297,57 @@ export function createRelayerRoutes(
             response: "Bid acceptance status",
           },
 
-          // Secret Management
-          "POST /secrets/reveal": {
-            description: "Request secret revelation for order completion",
+          "POST /orders/{hash}/state": {
+            description: "Update order state (Step 9 - for resolvers only)",
             body: {
-              orderHash: "0x...",
+              newState: "waiting-for-secret | completed | failed",
+              resolverAddress: "0x... (resolver address)",
+            },
+            response: "State update confirmation",
+          },
+
+          "POST /orders/{hash}/claim": {
+            description: "Claim order for resolver processing (Step 7)",
+            body: {
+              resolverAddress: "0x... (resolver address)",
+              estimatedGas: "Gas estimate for execution",
+              signature: "0x... (resolver signature)",
+            },
+            response: "Order claim confirmation",
+          },
+
+          "POST /orders/{hash}/escrow-deployed": {
+            description: "Confirm escrow deployment (Step 7.1 & 9.1)",
+            body: {
+              escrowType: "src | dst",
+              escrowAddress: "0x... (deployed escrow contract address)",
+              transactionHash: "0x... (deployment transaction hash)",
+              blockNumber: "Block number of deployment",
+              resolverAddress: "0x... (resolver address)",
+              signature: "0x... (resolver signature)",
+            },
+            response: "Escrow deployment confirmation",
+          },
+
+          // Secret Management & Security
+          "GET /orders/{hash}/verify-escrows": {
+            description:
+              "Verify escrows are safe for secret revelation (Pre-Step 11)",
+            body: null,
+            response: {
+              safe: "boolean - whether it's safe to reveal secret",
+              verification: "Detailed escrow verification results",
+              srcEscrowVerified: "boolean - source escrow verification status",
+              dstEscrowVerified:
+                "boolean - destination escrow verification status",
+              issues: "array - any security issues found",
+            },
+          },
+
+          "POST /orders/{hash}/reveal-secret": {
+            description:
+              "Request secret revelation for order completion (Step 11)",
+            body: {
               secret: "Secret value for HTLC unlock",
               proof: "Proof of escrow creation",
               signature: "0x...",
@@ -279,56 +355,39 @@ export function createRelayerRoutes(
             response: "Secret revelation status",
           },
 
-          // Partial Fills (Whitepaper Section 2.5)
-          "POST /partial-fills": {
-            description: "Submit partial fill for order (Merkle tree based)",
-            body: {
-              orderHash: "0x...",
-              resolver: "0x...",
-              fillAmount: "Amount to fill in wei",
-              proposedSecretIndex: "Secret index for this fill",
-              signature: "0x...",
-            },
-            response: "Partial fill status and secret index",
+          // System Statistics
+          "GET /stats": {
+            description: "Get system statistics and performance metrics",
+            body: null,
+            response: "System health, order counts, and performance data",
           },
 
-          "GET /partial-fills/{orderHash}": {
-            description: "Get partial fill status and remaining capacity",
+          "GET /auctions/{orderHash}": {
+            description: "Get auction information for specific order",
             body: null,
-            response: "Complete partial fill state and history",
+            response: "Detailed auction state and bidding information",
           },
 
-          // Gas & Auction Monitoring
-          "GET /gas-summary": {
-            description: "Get current gas conditions and adjustment statistics",
+          // WebSocket Support
+          "GET /ws-info": {
+            description:
+              "Get WebSocket connection details and supported events",
             body: null,
-            response: "Gas price data and adjustment history",
-          },
-
-          "GET /auction-stats": {
-            description: "Get Dutch auction performance metrics",
-            body: null,
-            response: "Auction statistics and curve performance",
-          },
-
-          "GET /resolver-stats": {
-            description: "Get resolver performance and competition data",
-            body: null,
-            response: "Resolver metrics and success rates",
+            response: "WebSocket configuration and event types",
           },
         },
 
         // Feature capabilities
         features: {
-          "Dutch Auctions":
-            "Competitive bidding with gas-adjusted custom curves (Section 2.3.4)",
-          "Partial Fills": "N+1 Merkle tree secret management (Section 2.5)",
-          "Gas Adjustments":
-            "Dynamic rate modifications based on network conditions",
-          "Per-Swap HTLCs": "Dynamic contract deployment for each swap",
+          "Dutch Auctions": "Competitive bidding with resolver selection",
+          "Per-Swap HTLCs": "Dynamic escrow contract deployment for each swap",
           "Cross-Chain": "EVM ↔ NEAR bidirectional atomic swaps",
           "SDK Integration": "Native support for 1inch Fusion+ SDK orders",
           "Real-time Updates": "WebSocket support for live order tracking",
+          "Security Verification":
+            "Independent on-chain escrow verification before secret reveal",
+          "State Management":
+            "Complete order lifecycle tracking with phase transitions",
         },
 
         // Supported chains
@@ -339,45 +398,61 @@ export function createRelayerRoutes(
 
         // Examples
         examples: {
-          "Create Simple Order": {
+          "Create SDK Order with Partial Fills": {
             method: "POST",
             url: "/orders",
             headers: {
               "x-maker-address": "0x742d35Cc6634C0532925a3b8D2269055Ea10b4e6",
             },
             body: {
-              sourceChain: "ethereum",
-              destinationChain: "near",
-              sourceToken: "USDC",
-              destinationToken: "NEAR",
-              sourceAmount: "1000000",
-              destinationAmount: "100000000000000000000000000",
-              timeout: Date.now() + 3600000,
-              signature: "0x...",
-              nonce: "unique-12345",
-            },
-          },
-
-          "Create SDK Order with Partial Fills": {
-            method: "POST",
-            url: "/orders",
-            body: {
               sdkOrder: {
-                orderInfo: { srcChainId: "1", dstChainId: "near" },
-                auctionDetails: {
-                  points: [
-                    { delay: 0, coefficient: 1.0 },
-                    { delay: 60, coefficient: 0.5 },
-                  ],
-                },
-                settlementInfo: {
-                  hashLock: {
-                    merkleRoot: "0x...",
-                    merkleLeaves: ["0x...", "0x...", "0x..."],
+                inner: {
+                  settlementExtensionContract: { val: "0x..." },
+                  inner: {
+                    makerAsset: { val: "0x..." },
+                    takerAsset: { val: "0x..." },
+                    makingAmount: "1000000",
+                    takingAmount: "100000000000000000000000000",
+                    maker: {
+                      val: "0x742d35Cc6634C0532925a3b8D2269055Ea10b4e6",
+                    },
+                    receiver: {
+                      val: "0x742d35Cc6634C0532925a3b8D2269055Ea10b4e6",
+                    },
+                  },
+                  fusionExtension: {
+                    auctionDetails: {
+                      initialRateBump: 1000,
+                      points: [
+                        { delay: 0, coefficient: 1.0 },
+                        { delay: 60, coefficient: 0.5 },
+                      ],
+                      duration: 120000,
+                      startTime: Date.now(),
+                    },
+                    hashLockInfo: {
+                      merkleRoot: "0x...",
+                      merkleLeaves: ["0x...", "0x...", "0x..."],
+                    },
+                    dstChainId: 397,
+                    dstToken: { val: "near" },
+                    srcSafetyDeposit: "50000",
+                    dstSafetyDeposit: "50000",
+                    timeLocks: {
+                      srcWithdrawal: 300,
+                      srcPublicWithdrawal: 600,
+                      srcCancellation: 1800,
+                      srcPublicCancellation: 3600,
+                      dstWithdrawal: 300,
+                      dstPublicWithdrawal: 600,
+                      dstCancellation: 1800,
+                    },
                   },
                 },
               },
               signature: "0x...",
+              sourceChain: "ethereum",
+              destinationChain: "near",
             },
           },
 
@@ -411,133 +486,91 @@ export function createRelayerRoutes(
     })
   );
 
-  // Create a new fusion order (supports both legacy and SDK formats)
+  // Prepare unsigned order for frontend signing (Steps 3+4+5)
   router.post(
-    "/orders",
+    "/orders/prepare",
+    validateBody(generateOrderSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      // Determine if this is a legacy request or SDK format
-      const isSDKFormat = req.body.sdkOrder && req.body.signature;
-
-      // Validate based on format
-      if (isSDKFormat) {
-        const { error, value } = Joi.object({
-          sdkOrder: sdkCrossChainOrderSchema.required(),
-          signature: Joi.string().required(),
-          sourceChain: Joi.string().required(),
-          destinationChain: Joi.string().required(),
-          orderHash: Joi.string().optional(), // Generated if not provided
-        }).validate(req.body);
-
-        if (error) {
-          return res
-            .status(400)
-            .json(
-              createResponse(
-                false,
-                undefined,
-                `SDK validation error: ${error.details[0].message}`
-              )
-            );
-        }
-        req.body = value;
-      } else {
-        // Legacy validation
-        const { error, value } = createOrderSchema.validate(req.body);
-        if (error) {
-          return res
-            .status(400)
-            .json(
-              createResponse(
-                false,
-                undefined,
-                `Legacy validation error: ${error.details[0].message}`
-              )
-            );
-        }
-        req.body = value;
-      }
-
-      const maker = req.headers["x-maker-address"] as string;
-      if (!maker) {
-        return res
-          .status(400)
-          .json(
-            createResponse(false, undefined, "Missing x-maker-address header")
-          );
-      }
+      const generateOrderRequest: GenerateOrderRequest = req.body;
 
       try {
-        if (isSDKFormat) {
-          // Handle SDK CrossChainOrder format
-          const {
-            sdkOrder,
-            signature,
-            sourceChain,
-            destinationChain,
+        // Create unsigned Fusion+ order internally
+        const { orderHash, fusionOrder } =
+          await relayerService.createFusionOrder(generateOrderRequest);
+
+        logger.info("Order details generated via API", {
+          orderHash,
+          userAddress: generateOrderRequest.userAddress,
+          fromChain: generateOrderRequest.fromChain,
+          toChain: generateOrderRequest.toChain,
+        });
+
+        return res.status(200).json(
+          createResponse(true, {
             orderHash,
-          } = req.body;
-
-          // Generate order hash if not provided
-          const finalOrderHash =
-            orderHash ||
-            `0x${Math.random().toString(16).substring(2).padStart(64, "0")}`;
-
-          // Map SDK order to our FusionOrderExtended format
-          const fusionOrder = SDKOrderMapper.mapSDKOrderToFusionOrder(
-            sdkOrder as SDKCrossChainOrder,
-            signature,
-            finalOrderHash,
-            sourceChain,
-            destinationChain
-          );
-
-          logger.info("SDK order mapped successfully", {
-            orderHash: finalOrderHash,
-            maker: fusionOrder.maker,
-            sourceChain,
-            destinationChain,
-            srcSafetyDeposit: fusionOrder.srcSafetyDeposit,
-            dstSafetyDeposit: fusionOrder.dstSafetyDeposit,
-            timeLocks: fusionOrder.detailedTimeLocks,
-          });
-
-          // Create order using the mapped data
-          const orderStatus = await relayerService.createOrderFromSDK(
-            fusionOrder
-          );
-
-          logger.info("SDK Order created via API", {
-            orderHash: orderStatus.orderHash,
-            maker: fusionOrder.maker,
-            sourceChain: fusionOrder.sourceChain,
-            destinationChain: fusionOrder.destinationChain,
-          });
-
-          return res.status(201).json(createResponse(true, orderStatus));
-        } else {
-          // Handle legacy format
-          const createOrderRequest: CreateOrderRequest = req.body;
-
-          const orderStatus = await relayerService.createOrder(
-            createOrderRequest,
-            maker
-          );
-
-          logger.info("Legacy Order created via API", {
-            orderHash: orderStatus.orderHash,
-            maker,
-            sourceChain: createOrderRequest.sourceChain,
-            destinationChain: createOrderRequest.destinationChain,
-          });
-
-          return res.status(201).json(createResponse(true, orderStatus));
-        }
+            fusionOrder, // Unsigned SDK CrossChainOrder for frontend signing
+            orderDetails: {
+              amount: generateOrderRequest.amount,
+              fromToken: generateOrderRequest.fromToken,
+              toToken: generateOrderRequest.toToken,
+              fromChain: generateOrderRequest.fromChain,
+              toChain: generateOrderRequest.toChain,
+              secretHash: generateOrderRequest.secretHash,
+            },
+          })
+        );
       } catch (error) {
-        logger.error("API: Failed to create order", {
+        logger.error("API: Failed to generate order details", {
           error: (error as Error).message,
-          maker,
-          isSDKFormat,
-          request: req.body,
+          request: generateOrderRequest,
+        });
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, (error as Error).message));
+      }
+    })
+  );
+
+  // Submit signed order (Step 6)
+  router.post(
+    "/orders/submit",
+    validateBody(submitSignedOrderSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const submitRequest: SubmitSignedOrderRequest = req.body;
+
+      try {
+        // Validate the signed order
+        const isValid = await relayerService.validateSignedOrder(
+          submitRequest.orderHash,
+          submitRequest.signedOrder,
+          submitRequest.signature
+        );
+
+        if (!isValid) {
+          return res
+            .status(400)
+            .json(
+              createResponse(false, undefined, "Invalid signature or order")
+            );
+        }
+
+        // Submit signed order and start relayer processing
+        const orderStatus = await relayerService.submitSignedOrder(
+          submitRequest.orderHash,
+          submitRequest.signedOrder,
+          submitRequest.signature
+        );
+
+        logger.info("Signed order submitted via API", {
+          orderHash: submitRequest.orderHash,
+          maker: submitRequest.signedOrder.inner.inner.maker.val,
+        });
+
+        return res.status(201).json(createResponse(true, orderStatus));
+      } catch (error) {
+        logger.error("API: Failed to submit signed order", {
+          error: (error as Error).message,
+          orderHash: submitRequest.orderHash,
         });
         return res
           .status(400)
@@ -548,9 +581,10 @@ export function createRelayerRoutes(
 
   // Get order status
   router.get(
-    "/orders/:orderHash",
+    "/orders/:hash/status",
     asyncHandler(async (req: Request, res: Response) => {
-      const { orderHash } = req.params;
+      const { hash } = req.params;
+      const orderHash = hash;
 
       if (!orderHash || !/^[a-fA-F0-9]{64}$/.test(orderHash)) {
         return res
@@ -627,12 +661,72 @@ export function createRelayerRoutes(
     })
   );
 
-  // Request secret reveal
+  // Verify escrows are safe for secret revelation (Pre-Step 11)
+  router.get(
+    "/orders/:hash/verify-escrows",
+    asyncHandler(async (req: Request, res: Response) => {
+      const { hash } = req.params;
+
+      // Validate order hash format
+      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, "Invalid order hash format"));
+      }
+
+      try {
+        const verificationResult =
+          await relayerService.verifyEscrowSafety(hash);
+
+        if (verificationResult.safe) {
+          logger.info("Escrows verified safe for secret revelation", {
+            orderHash: hash,
+            srcEscrowVerified: verificationResult.srcEscrowVerified,
+            dstEscrowVerified: verificationResult.dstEscrowVerified,
+          });
+
+          return res.json(
+            createResponse(true, {
+              safe: true,
+              orderHash: hash,
+              verification: verificationResult,
+              message: "Safe to reveal secret",
+            })
+          );
+        } else {
+          return res.json(
+            createResponse(false, {
+              safe: false,
+              orderHash: hash,
+              verification: verificationResult,
+              message: "NOT safe to reveal secret",
+            })
+          );
+        }
+      } catch (error) {
+        logger.error("API: Failed to verify escrow safety", {
+          error: (error as Error).message,
+          orderHash: hash,
+        });
+        return res
+          .status(500)
+          .json(
+            createResponse(false, undefined, "Failed to verify escrow safety")
+          );
+      }
+    })
+  );
+
+  // Request secret reveal (Step 11)
   router.post(
-    "/secrets/reveal",
+    "/orders/:hash/reveal-secret",
     validateBody(secretRevealSchema),
     asyncHandler(async (req: Request, res: Response) => {
-      const request: SecretRevealRequest = req.body;
+      const { hash } = req.params;
+      const request: SecretRevealRequest = {
+        orderHash: hash,
+        ...req.body,
+      };
 
       try {
         const secret = await relayerService.requestSecretReveal(request);
@@ -691,6 +785,165 @@ export function createRelayerRoutes(
           resolver: resolver.address,
         });
         res
+          .status(400)
+          .json(createResponse(false, undefined, (error as Error).message));
+      }
+    })
+  );
+
+  // Update order state (Step 9 - for resolvers)
+  router.post(
+    "/orders/:hash/state",
+    validateBody(updateOrderStateSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { hash } = req.params;
+      const { newState, resolverAddress } = req.body;
+
+      // Validate order hash format
+      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, "Invalid order hash format"));
+      }
+
+      try {
+        const updated = await relayerService.updateOrderState(
+          hash,
+          newState,
+          resolverAddress
+        );
+
+        logger.info("Order state updated via API", {
+          orderHash: hash,
+          newState,
+          resolverAddress,
+        });
+
+        return res.json(createResponse(true, { updated, orderHash: hash }));
+      } catch (error) {
+        logger.error("API: Failed to update order state", {
+          error: (error as Error).message,
+          orderHash: hash,
+          newState,
+          resolverAddress,
+        });
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, (error as Error).message));
+      }
+    })
+  );
+
+  // Claim order for resolver processing (Step 7)
+  router.post(
+    "/orders/:hash/claim",
+    validateBody(claimOrderSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { hash } = req.params;
+      const claimRequest: ClaimOrderRequest = {
+        orderHash: hash,
+        ...req.body,
+      };
+
+      // Validate order hash format
+      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, "Invalid order hash format"));
+      }
+
+      try {
+        const success = await relayerService.claimOrder(claimRequest);
+
+        if (success) {
+          logger.info("Order claimed by resolver", {
+            orderHash: hash,
+            resolverAddress: claimRequest.resolverAddress,
+          });
+
+          return res.json(
+            createResponse(true, {
+              claimed: true,
+              orderHash: hash,
+              resolverAddress: claimRequest.resolverAddress,
+            })
+          );
+        } else {
+          return res
+            .status(400)
+            .json(createResponse(false, undefined, "Failed to claim order"));
+        }
+      } catch (error) {
+        logger.error("API: Failed to claim order", {
+          error: (error as Error).message,
+          orderHash: hash,
+          resolverAddress: claimRequest.resolverAddress,
+        });
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, (error as Error).message));
+      }
+    })
+  );
+
+  // Confirm escrow deployment (Step 7.1 & 9.1)
+  router.post(
+    "/orders/:hash/escrow-deployed",
+    validateBody(escrowDeploymentSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { hash } = req.params;
+      const confirmation: EscrowDeploymentConfirmation = {
+        orderHash: hash,
+        ...req.body,
+      };
+
+      // Validate order hash format
+      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, "Invalid order hash format"));
+      }
+
+      try {
+        const success =
+          await relayerService.confirmEscrowDeployment(confirmation);
+
+        if (success) {
+          logger.info("Escrow deployment confirmed", {
+            orderHash: hash,
+            escrowType: confirmation.escrowType,
+            escrowAddress: confirmation.escrowAddress,
+            transactionHash: confirmation.transactionHash,
+            resolverAddress: confirmation.resolverAddress,
+          });
+
+          return res.json(
+            createResponse(true, {
+              confirmed: true,
+              orderHash: hash,
+              escrowType: confirmation.escrowType,
+              escrowAddress: confirmation.escrowAddress,
+            })
+          );
+        } else {
+          return res
+            .status(400)
+            .json(
+              createResponse(
+                false,
+                undefined,
+                "Failed to confirm escrow deployment"
+              )
+            );
+        }
+      } catch (error) {
+        logger.error("API: Failed to confirm escrow deployment", {
+          error: (error as Error).message,
+          orderHash: hash,
+          escrowType: req.body.escrowType,
+          resolverAddress: req.body.resolverAddress,
+        });
+        return res
           .status(400)
           .json(createResponse(false, undefined, (error as Error).message));
       }
@@ -760,64 +1013,6 @@ export function createRelayerRoutes(
     })
   );
 
-  // Partial fill endpoints
-  router.post(
-    "/partial-fills",
-    asyncHandler(async (req: Request, res: Response) => {
-      // This would integrate with PartialFillManager
-      return res.json(
-        createResponse(
-          false,
-          undefined,
-          "Partial fill endpoint not yet implemented - requires PartialFillManager integration"
-        )
-      );
-    })
-  );
-
-  router.get(
-    "/partial-fills/:orderHash",
-    asyncHandler(async (req: Request, res: Response) => {
-      // This would integrate with PartialFillManager
-      return res.json(
-        createResponse(
-          false,
-          undefined,
-          "Partial fill status endpoint not yet implemented - requires PartialFillManager integration"
-        )
-      );
-    })
-  );
-
-  // Gas and auction monitoring endpoints
-  router.get(
-    "/gas-summary",
-    asyncHandler(async (req: Request, res: Response) => {
-      // This would integrate with CustomCurveManager
-      return res.json(
-        createResponse(
-          false,
-          undefined,
-          "Gas summary endpoint not yet implemented - requires CustomCurveManager integration"
-        )
-      );
-    })
-  );
-
-  router.get(
-    "/auction-stats",
-    asyncHandler(async (req: Request, res: Response) => {
-      // This would integrate with OrderManager auction statistics
-      return res.json(
-        createResponse(
-          false,
-          undefined,
-          "Auction stats endpoint not yet implemented - requires OrderManager statistics integration"
-        )
-      );
-    })
-  );
-
   // WebSocket endpoint info (enhanced)
   router.get("/ws-info", (req: Request, res: Response) => {
     res.json(
@@ -830,10 +1025,9 @@ export function createRelayerRoutes(
         },
         supportedEvents: [
           "order_created",
+          "order_updates",
           "auction_started",
           "auction_progress",
-          "gas_adjustment",
-          "partial_fill",
           "auction_won",
           "secret_revealed",
           "order_completed",

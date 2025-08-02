@@ -92,7 +92,17 @@ export interface PartialFill {
 }
 
 export interface TimelockPhase {
-  phase: "announcement" | "deposit" | "withdrawal" | "recovery";
+  phase:
+    | "announcement"
+    | "deposit"
+    | "withdrawal"
+    | "waiting-for-secret"
+    | "recovery"
+    | "submitted" // Order signed and waiting for resolver pickup
+    | "claimed" // Resolver has claimed the order
+    | "src_escrow_deployed" // Source chain escrow deployed
+    | "dst_escrow_deployed" // Destination chain escrow deployed
+    | "completed"; // Both escrows deployed and confirmed
   orderHash: string;
   startTime: number;
   endTime: number;
@@ -188,18 +198,37 @@ export interface ApiResponse<T = any> {
   timestamp: number;
 }
 
-export interface CreateOrderRequest {
-  sourceChain: string;
-  destinationChain: string;
-  sourceToken: string;
-  destinationToken: string;
-  sourceAmount: string;
-  destinationAmount: string;
-  timeout: number;
-  auctionDuration?: number;
-  initialRateBump?: number;
+export interface GenerateOrderRequest {
+  userAddress: string;
+  amount: string;
+  fromToken: string;
+  toToken: string;
+  fromChain: string;
+  toChain: string;
+  secretHash: string; // Previously generated secret hash from frontend
+}
+
+export interface SubmitSignedOrderRequest {
+  orderHash: string;
+  signedOrder: any; // SDK CrossChainOrder object
   signature: string;
-  nonce: string;
+}
+
+export interface ClaimOrderRequest {
+  orderHash: string;
+  resolverAddress: string;
+  estimatedGas: number;
+  signature: string;
+}
+
+export interface EscrowDeploymentConfirmation {
+  orderHash: string;
+  escrowType: "src" | "dst";
+  escrowAddress: string;
+  transactionHash: string;
+  blockNumber: number;
+  resolverAddress: string;
+  signature: string;
 }
 
 export interface ResolverBidRequest {
@@ -337,6 +366,19 @@ export interface FusionOrderExtended extends FusionOrder {
   enhancedAuctionDetails?: {
     points: any[]; // Price curve points
   };
+
+  // Order state management
+  phase?: string; // Current order phase (submitted, claimed, src_escrow_deployed, etc.)
+  assignedResolver?: string; // Resolver assigned to this order
+  estimatedGas?: number; // Gas estimate for execution
+
+  // Escrow contract addresses
+  srcEscrowAddress?: string; // Source chain escrow contract address
+  dstEscrowAddress?: string; // Destination chain escrow contract address
+  srcEscrowTxHash?: string; // Source escrow deployment transaction hash
+  dstEscrowTxHash?: string; // Destination escrow deployment transaction hash
+  srcEscrowBlockNumber?: number; // Source escrow deployment block number
+  dstEscrowBlockNumber?: number; // Destination escrow deployment block number
 
   // Deployment timestamps (CRITICAL for timelock calculation)
   sourceEscrowDeployedAt?: number; // When source escrow deployed (E1)
