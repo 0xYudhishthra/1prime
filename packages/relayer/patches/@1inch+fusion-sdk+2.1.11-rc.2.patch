@@ -1,0 +1,38 @@
+diff --git a/node_modules/@1inch/fusion-sdk/dist/cjs/constants.js b/node_modules/@1inch/fusion-sdk/dist/cjs/constants.js
+index 198896c..160a347 100644
+--- a/node_modules/@1inch/fusion-sdk/dist/cjs/constants.js
++++ b/node_modules/@1inch/fusion-sdk/dist/cjs/constants.js
+@@ -17,6 +17,7 @@ var NetworkEnum;
+     NetworkEnum[NetworkEnum["LINEA"] = 59144] = "LINEA";
+     NetworkEnum[NetworkEnum["SONIC"] = 146] = "SONIC";
+     NetworkEnum[NetworkEnum["UNICHAIN"] = 130] = "UNICHAIN";
++    NetworkEnum[NetworkEnum["NEAR"] = 397] = "NEAR";
+ })(NetworkEnum = exports.NetworkEnum || (exports.NetworkEnum = {}));
+ exports.ONE_INCH_LIMIT_ORDER_V4 = '0x111111125421ca6dc452d289314280a0f8842a65';
+ exports.UINT_160_MAX = (1n << 160n) - 1n;
+diff --git a/node_modules/@1inch/fusion-sdk/dist/esm/constants.js b/node_modules/@1inch/fusion-sdk/dist/esm/constants.js
+index ca6c4da..9ee5a3c 100644
+--- a/node_modules/@1inch/fusion-sdk/dist/esm/constants.js
++++ b/node_modules/@1inch/fusion-sdk/dist/esm/constants.js
+@@ -14,6 +14,7 @@ export var NetworkEnum;
+     NetworkEnum[NetworkEnum["LINEA"] = 59144] = "LINEA";
+     NetworkEnum[NetworkEnum["SONIC"] = 146] = "SONIC";
+     NetworkEnum[NetworkEnum["UNICHAIN"] = 130] = "UNICHAIN";
++    NetworkEnum[NetworkEnum["NEAR"] = 397] = "NEAR";
+ })(NetworkEnum || (NetworkEnum = {}));
+ export const ONE_INCH_LIMIT_ORDER_V4 = '0x111111125421ca6dc452d289314280a0f8842a65';
+ export const UINT_160_MAX = (1n << 160n) - 1n;
+diff --git a/node_modules/@1inch/fusion-sdk/dist/types/src/constants.d.ts b/node_modules/@1inch/fusion-sdk/dist/types/src/constants.d.ts
+index edfe59d..b361035 100644
+--- a/node_modules/@1inch/fusion-sdk/dist/types/src/constants.d.ts
++++ b/node_modules/@1inch/fusion-sdk/dist/types/src/constants.d.ts
+@@ -12,7 +12,8 @@ export declare enum NetworkEnum {
+     COINBASE = 8453,
+     LINEA = 59144,
+     SONIC = 146,
+-    UNICHAIN = 130
++    UNICHAIN = 130,
++    NEAR = 397
+ }
+ export declare const ONE_INCH_LIMIT_ORDER_V4 = "0x111111125421ca6dc452d289314280a0f8842a65";
+ export declare const UINT_160_MAX: bigint;

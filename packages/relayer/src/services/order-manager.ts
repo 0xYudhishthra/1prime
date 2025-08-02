@@ -8,7 +8,6 @@ import {
   OrderEvent,
   TimelockPhase,
   RelayerStatus,
-  CreateOrderRequest,
   ResolverBidRequest,
 } from "../types";
 import { createHash } from "crypto";
@@ -34,63 +33,6 @@ export class OrderManager extends EventEmitter {
 
     // Start gas monitoring for custom curves
     this.customCurveManager.startGasMonitoring();
-  }
-
-  async createOrder(
-    request: CreateOrderRequest,
-    maker: string
-  ): Promise<FusionOrder> {
-    try {
-      const orderHash = this.generateOrderHash(request, maker);
-      const now = Date.now();
-
-      const order: FusionOrder = {
-        orderHash,
-        maker,
-        sourceChain: request.sourceChain,
-        destinationChain: request.destinationChain,
-        sourceToken: request.sourceToken,
-        destinationToken: request.destinationToken,
-        sourceAmount: request.sourceAmount,
-        destinationAmount: request.destinationAmount,
-        secretHash: this.generateSecretHash(request.nonce, maker),
-        timeout: request.timeout,
-        auctionStartTime: now,
-        auctionDuration: request.auctionDuration || 120000, // 2 minutes default
-        initialRateBump: request.initialRateBump || 1000, // 10% default
-        signature: request.signature,
-        nonce: request.nonce,
-        createdAt: now,
-      };
-
-      // Validate order
-      this.validateOrder(order);
-
-      // Store order
-      this.orders.set(orderHash, order);
-
-      // Initialize order status
-      const orderStatus: OrderStatus = {
-        orderHash,
-        phase: "announcement",
-        isCompleted: false,
-        events: [this.createOrderEvent("order_created", { order })],
-      };
-      this.orderStatuses.set(orderHash, orderStatus);
-
-      // Start Dutch auction
-      this.startDutchAuction(order);
-
-      this.logger.info("Order created", { orderHash, maker });
-      this.emit("order_created", order);
-
-      return order;
-    } catch (error) {
-      this.logger.error("Failed to create order", {
-        error: (error as Error).message,
-      });
-      throw error;
-    }
   }
 
   /**
@@ -499,32 +441,6 @@ export class OrderManager extends EventEmitter {
     });
 
     this.emit("auction_started", auction);
-  }
-
-  private generateOrderHash(
-    request: CreateOrderRequest,
-    maker: string
-  ): string {
-    const data = JSON.stringify({
-      maker,
-      sourceChain: request.sourceChain,
-      destinationChain: request.destinationChain,
-      sourceToken: request.sourceToken,
-      destinationToken: request.destinationToken,
-      sourceAmount: request.sourceAmount,
-      destinationAmount: request.destinationAmount,
-      timeout: request.timeout,
-      nonce: request.nonce,
-    });
-
-    return createHash("sha256").update(data).digest("hex");
-  }
-
-  private generateSecretHash(nonce: string, maker: string): string {
-    const secret = createHash("sha256")
-      .update(`${nonce}-${maker}-${Date.now()}`)
-      .digest("hex");
-    return createHash("sha256").update(secret).digest("hex");
   }
 
   private createOrderEvent(type: OrderEvent["type"], data: any): OrderEvent {
