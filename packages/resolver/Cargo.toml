@@ -22,6 +22,13 @@ near-crypto = "0.30.3"
 near-primitives = "0.30.3"
 borsh = "1.5.7"
 lib-base64 = "2.1.0"
+progenitor = "0.11.0"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.21"
+rand = "0.8"
+futures = "0.3"
+regress = "0.10.4"
 
 [build-dependencies]
 dotenvy = "0.15"
+progenitor = "0.11.0"
