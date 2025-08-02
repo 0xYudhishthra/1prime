@@ -61,17 +61,17 @@ paths:
                   websocket:
                     enabled: true
                     endpoint: "/ws"
-                                          events:
-                        [
-                          "order_created",
-                          "order_updates",
-                          "auction_started",
-                          "auction_progress",
-                          "phase_transition",
-                          "secret_revealed",
-                          "order_completed",
-                          "order_cancelled",
-                        ]
+                    events:
+                      [
+                        "order_created",
+                        "order_updates",
+                        "auction_started",
+                        "auction_progress",
+                        "phase_transition",
+                        "secret_revealed",
+                        "order_completed",
+                        "order_cancelled",
+                      ]
                   endpoints:
                     "GET /health": "Get relayer health status and chain connectivity"
                     "POST /orders/prepare": "Generate unsigned Fusion+ order for frontend signing"
@@ -167,7 +167,7 @@ paths:
       summary: Generate Unsigned Order
       description: |
         Generate an unsigned Fusion+ order for frontend signing (Steps 3+4+5 of the cross-chain flow).
-        
+
         This endpoint uses the 1inch SDK internally to create a properly structured CrossChainOrder
         with HashLock, TimeLocks, and AuctionDetails. The frontend then signs this order.
       operationId: generateOrder
@@ -198,12 +198,12 @@ paths:
                 success: true
                 data:
                   orderHash: "0x123..."
-                  fusionOrder: 
+                  fusionOrder:
                     inner:
-                      settlementExtensionContract: 
+                      settlementExtensionContract:
                         val: "0x..."
                       inner:
-                        makerAsset: 
+                        makerAsset:
                           val: "0x..."
                         takerAsset:
                           val: "0x..."
@@ -220,7 +220,7 @@ paths:
       summary: Submit Signed Order
       description: |
         Submit a signed Fusion+ order to the relayer (Step 6 of the cross-chain flow).
-        
+
         The order must be signed by the frontend using the unsigned order from /orders/prepare.
       operationId: submitSignedOrder
       tags:
@@ -323,14 +323,14 @@ paths:
         Perform independent on-chain verification that both source and destination escrows 
         are safe for secret revelation. This is a critical security endpoint that the frontend
         MUST call before revealing any secrets.
-        
+
         **Security Features:**
         - Verifies contract existence on both chains
         - Checks escrow parameters (amount, token, secret hash)
         - Validates escrow funding status
         - Detects if escrows have already been withdrawn or cancelled
         - Confirms escrow state matches expected conditions
-        
+
         **NEAR Verification:** Uses NEAR API to call `get_escrow_info()` and verify state
         **EVM Verification:** Uses 1inch contract events to detect withdrawals/cancellations
       operationId: verifyEscrowSafety
@@ -405,7 +405,7 @@ paths:
       summary: Claim Order
       description: |
         Claim an order for resolver processing (Step 7 of the cross-chain flow).
-        
+
         Only registered resolvers can claim orders. This transitions the order
         to "claimed" phase and assigns it to the resolver.
       operationId: claimOrder
@@ -454,7 +454,7 @@ paths:
       summary: Confirm Escrow Deployment
       description: |
         Confirm that an escrow has been deployed (Steps 7.1 & 9.1 of the cross-chain flow).
-        
+
         Resolvers call this endpoint after deploying source or destination escrows
         to update the order state and provide deployment details.
       operationId: confirmEscrowDeployment
@@ -507,7 +507,7 @@ paths:
       summary: Update Order State
       description: |
         Update the order state (Step 9 of the cross-chain flow).
-        
+
         Resolvers use this endpoint to transition orders to "waiting-for-secret"
         or other states as the cross-chain swap progresses.
       operationId: updateOrderState
@@ -554,7 +554,7 @@ paths:
       summary: Request Secret Reveal
       description: |
         Request revelation of order secret after escrow verification (Step 11 of the cross-chain flow).
-        
+
         **IMPORTANT:** Frontend MUST call `/orders/{hash}/verify-escrows` first to ensure
         it's safe to reveal the secret. Revealing secrets to unsafe escrows results in loss of funds.
       operationId: requestSecretReveal
@@ -653,47 +653,6 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /auctions/{orderHash}:
-    get:
-      summary: Get Auction Information
-      description: Retrieve detailed auction information for a specific order
-      operationId: getAuctionInfo
-      tags:
-        - Orders
-      parameters:
-        - name: orderHash
-          in: path
-          required: true
-          description: Unique hash identifier of the order
-          schema:
-            type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
-      responses:
-        "200":
-          description: Auction information retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: true
-                data:
-                  orderHash: "0x123..."
-                  startTime: 1640995200000
-                  duration: 300000
-                  initialRateBump: 1000
-                  currentRate: 0.85
-                  isActive: true
-                  participatingResolvers: ["0xabc...", "0xdef..."]
-                  winner: "0xdef..."
-                  finalRate: 0.82
-                timestamp: 1640995200000
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
   /resolvers:
     post:
       summary: Register Resolver
@@ -740,8 +699,6 @@ paths:
                 timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
-
-
 
   /auctions/{orderHash}:
     get:
@@ -822,8 +779,6 @@ paths:
                 timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
-
-
 
   /ws-info:
     get:
@@ -1275,8 +1230,6 @@ components:
           maximum: 100
           description: Reputation score (0-100, optional)
 
-
-
     OrderStatus:
       type: object
       properties:
@@ -1284,7 +1237,15 @@ components:
           type: string
         phase:
           type: string
-          enum: [submitted, claimed, src_escrow_deployed, dst_escrow_deployed, waiting-for-secret, completed]
+          enum:
+            [
+              submitted,
+              claimed,
+              src_escrow_deployed,
+              dst_escrow_deployed,
+              waiting-for-secret,
+              completed,
+            ]
         sourceEscrow:
           $ref: "#/components/schemas/EscrowDetails"
         destinationEscrow:
@@ -1386,7 +1347,15 @@ components:
       properties:
         phase:
           type: string
-          enum: [submitted, claimed, src_escrow_deployed, dst_escrow_deployed, waiting-for-secret, completed]
+          enum:
+            [
+              submitted,
+              claimed,
+              src_escrow_deployed,
+              dst_escrow_deployed,
+              waiting-for-secret,
+              completed,
+            ]
         orderHash:
           type: string
         startTime:
