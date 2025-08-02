@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -13,6 +14,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Copy, Wallet, Loader2, RefreshCw } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 interface TokenBalance {
   token: {
@@ -65,38 +68,61 @@ interface WalletData {
   };
 }
 
-export default function DashboardPage() {
+function DashboardPage() {
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const { token, isAuthenticated, logout } = useAuth();
 
   const fetchWalletData = async () => {
-    const token = localStorage.getItem('authToken');
     if (!token) {
       setError('No auth token found. Please sign in.');
       setLoading(false);
       return;
     }
 
+    console.log(
+      'Retrieved token:',
+      token ? token.substring(0, 20) + '...' : 'null'
+    ); // Debug log
+
     try {
+      console.log(
+        'Making API call with token:',
+        token.substring(0, 20) + '...'
+      ); // Debug log
       const response = await fetch(
         'https://shortcut-auth.tanweihup.workers.dev/api/wallet/balances',
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            accept: 'application/json',
+            'Content-Type': 'application/json',
           },
         }
       );
 
+      console.log('Response status:', response.status); // Debug log
       if (response.ok) {
         const data = await response.json();
         setWalletData(data);
         setError('');
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to fetch wallet data');
+        // If unauthorized, clear the token and redirect to sign in
+        if (response.status === 401) {
+          console.log('401 Unauthorized - clearing token and redirecting');
+          localStorage.removeItem('authToken');
+          router.push('/auth/signin');
+          return;
+        } else {
+          try {
+            const errorData = await response.json();
+            setError(errorData.error || 'Failed to fetch wallet data');
+          } catch {
+            setError(`HTTP ${response.status}: Failed to fetch wallet data`);
+          }
+        }
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -155,33 +181,32 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-gray-200 px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <div className="mx-auto max-w-6xl p-6">
+        {/* Dashboard Header */}
+        <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <h1 className="text-3xl font-bold">1Prime Wallet</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/deposit">
               <Button variant="outline" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Home
+                <Wallet className="mr-2 h-4 w-4" />
+                Deposit
               </Button>
             </Link>
-            <div className="text-2xl font-bold">1Prime Wallet</div>
+            <Button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+              />
+              Refresh
+            </Button>
           </div>
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
-            />
-            Refresh
-          </Button>
         </div>
-      </header>
-
-      <div className="mx-auto max-w-6xl p-6">
         {/* Summary */}
         <div className="mb-8">
           <h1 className="mb-2 text-3xl font-bold">Your Cross-Chain Wallet</h1>
@@ -431,5 +456,13 @@ export default function DashboardPage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPageWrapper() {
+  return (
+    <ProtectedRoute>
+      <DashboardPage />
+    </ProtectedRoute>
   );
 }
