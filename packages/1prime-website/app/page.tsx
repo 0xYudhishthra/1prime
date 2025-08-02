@@ -6,21 +6,6 @@ import { ArrowRight, Smartphone, Zap, Globe } from 'lucide-react';
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-white text-black">
-      {/* Header */}
-      <header className="border-b border-gray-200 px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="text-2xl font-bold">1Prime</div>
-          <div className="flex gap-4">
-            <Link href="/auth/signin">
-              <Button variant="outline">Sign In</Button>
-            </Link>
-            <Link href="/auth/signup">
-              <Button>Get Started</Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
       {/* Hero Section */}
       <section className="px-6 py-20">
         <div className="mx-auto max-w-4xl text-center">
