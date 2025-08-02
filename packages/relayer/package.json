@@ -13,10 +13,13 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "patch": "bunx @milahu/patch-package",
-    "postinstall": "patch-package || npx @milahu/patch-package || echo 'Patch application failed, continuing...'"
+    "verify-patch": "node -e \"console.log('NetworkEnum from fusion-sdk:', require('@1inch/fusion-sdk').NetworkEnum); console.log('SupportedChains from cross-chain-sdk:', require('@1inch/cross-chain-sdk').SupportedChains);\"",
+    "postinstall": "patch-package || npx @milahu/patch-package || echo 'Patch application failed, continuing...'; npm run verify-patch"
   },
   "dependencies": {
+    "@1inch/byte-utils": "^2.0.0",
     "@1inch/cross-chain-sdk": "^0.1.15",
+    "@1inch/fusion-sdk": "^2.1.11-rc.2",
     "@near-js/providers": "2",
     "@supabase/supabase-js": "^2.38.5",
     "axios": "^1.6.2",
