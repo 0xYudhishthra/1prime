@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "patch-package && node --input-type=module -e \"(async () => { try { const { NetworkEnum } = await import('@1inch/fusion-sdk'); console.log('✅ NEAR networks verification:'); console.log('NEAR:', NetworkEnum.NEAR ? '✅ Available (397)' : '❌ Missing'); console.log('NEAR_TESTNET:', NetworkEnum.NEAR_TESTNET ? '✅ Available (398)' : '❌ Missing'); } catch(e) { console.log('❌ Error checking NEAR networks:', e.message); } })()\"",
     "dev:relayer": "pnpm --filter @1prime/relayer dev",
     "build:relayer": "pnpm --filter @1prime/relayer build",
     "test:relayer": "pnpm --filter @1prime/relayer test",
