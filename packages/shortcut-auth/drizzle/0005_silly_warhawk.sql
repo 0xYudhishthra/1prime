@@ -1,0 +1,1 @@
+ALTER TABLE "smart_wallet" ADD COLUMN "evm_supported_chains" json DEFAULT '[]'::json NOT NULL;

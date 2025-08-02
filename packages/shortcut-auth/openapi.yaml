@@ -50,34 +50,34 @@ paths:
                 email:
                   type: string
                   format: email
-                  example: "user@example.com"
+                  example: 'user@example.com'
                 password:
                   type: string
                   minLength: 6
                   maxLength: 10
-                  example: "password123"
+                  example: 'password123'
       responses:
-        "200":
+        '200':
           description: Account created successfully
           content:
             application/json:
               schema:
                 type: string
                 description: Bearer token for authentication
-                example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        "500":
+                example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        '500':
           description: Failed to create account
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               examples:
                 evm_error:
                   value:
-                    error: "Failed to create evm account"
+                    error: 'Failed to create evm account'
                 near_error:
                   value:
-                    error: "Failed to create near account"
+                    error: 'Failed to create near account'
 
   /api/send-transaction:
     post:
@@ -86,7 +86,7 @@ paths:
       summary: Send EVM transaction
       description: Sends a test EVM transaction using the user's smart wallet
       responses:
-        "200":
+        '200':
           description: Transaction sent successfully
           content:
             application/json:
@@ -96,11 +96,11 @@ paths:
                   txnHash:
                     type: string
                     description: Transaction hash
-                    example: "0x1234567890abcdef..."
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/ServerError"
+                    example: '0x1234567890abcdef...'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /api/send-near-transaction:
     post:
@@ -109,7 +109,7 @@ paths:
       summary: Send NEAR transaction
       description: Sends a test NEAR transaction (0.1 NEAR to self)
       responses:
-        "200":
+        '200':
           description: Transaction sent successfully
           content:
             application/json:
@@ -128,18 +128,18 @@ paths:
                         type: array
                         items:
                           type: object
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
           description: Server error or no NEAR account found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               examples:
                 no_account:
                   value:
-                    error: "No near account found"
+                    error: 'No near account found'
 
   /api/random-number:
     get:
@@ -148,7 +148,7 @@ paths:
       summary: Get random number (test endpoint)
       description: Returns a random number to test authentication
       responses:
-        "200":
+        '200':
           description: Random number generated
           content:
             application/json:
@@ -160,8 +160,8 @@ paths:
                     minimum: 0
                     maximum: 99
                     example: 42
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /create-near-account:
     get:
@@ -171,7 +171,7 @@ paths:
       description: Test endpoint to create a NEAR account (development only)
       security: []
       responses:
-        "200":
+        '200':
           description: NEAR account created
           content:
             application/json:
@@ -183,13 +183,13 @@ paths:
                     properties:
                       accountId:
                         type: string
-                        example: "4ervtktfnuw7kwxaervheolyggrdncxo.testnet"
+                        example: '4ervtktfnuw7kwxaervheolyggrdncxo.testnet'
                       keyPair:
                         type: object
                       transaction:
                         type: object
-        "500":
-          $ref: "#/components/responses/ServerError"
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /api/wallet/supported-chains:
     get:
@@ -199,7 +199,7 @@ paths:
       description: Returns list of supported EVM testnet chains for cross-chain operations
       security: [] # No auth required
       responses:
-        "200":
+        '200':
           description: Supported chains retrieved successfully
           content:
             application/json:
@@ -216,15 +216,15 @@ paths:
                           example: 421614
                         name:
                           type: string
-                          example: "Arbitrum Sepolia"
+                          example: 'Arbitrum Sepolia'
               example:
                 chains:
                   - chainId: 11155111
-                    name: "Ethereum Sepolia"
+                    name: 'Ethereum Sepolia'
                   - chainId: 421614
-                    name: "Arbitrum Sepolia"
+                    name: 'Arbitrum Sepolia'
                   - chainId: 11155420
-                    name: "Optimism Sepolia"
+                    name: 'Optimism Sepolia'
 
   /api/wallet/addresses:
     get:
@@ -233,7 +233,7 @@ paths:
       summary: Get wallet addresses
       description: Returns both EVM and NEAR wallet addresses. EVM address works on all supported testnet chains.
       responses:
-        "200":
+        '200':
           description: Wallet addresses retrieved successfully
           content:
             application/json:
@@ -245,26 +245,26 @@ paths:
                     properties:
                       address:
                         type: string
-                        example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                        example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
                       note:
                         type: string
-                        example: "Same address works on all supported EVM chains (testnets)"
+                        example: 'Same address works on all supported EVM chains (testnets)'
                   near:
                     type: object
                     properties:
                       accountId:
                         type: string
-                        example: "ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
+                        example: 'ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
           description: Wallet not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               example:
-                error: "Wallet not found"
+                error: 'Wallet not found'
 
   /api/wallet/export-private-key:
     get:
@@ -279,7 +279,7 @@ paths:
 
         The same private key works on all EVM chains but generates different smart wallet addresses.
       responses:
-        "200":
+        '200':
           description: Private key exported successfully
           content:
             application/json:
@@ -288,27 +288,27 @@ paths:
                 properties:
                   warning:
                     type: string
-                    example: "⚠️ DEVELOPMENT ONLY - Keep this private key secure! Never share it!"
+                    example: '⚠️ DEVELOPMENT ONLY - Keep this private key secure! Never share it!'
                   signerPrivateKey:
                     type: string
                     description: Private key for MetaMask import (keep secure!)
-                    example: "0x1234567890abcdef..."
+                    example: '0x1234567890abcdef...'
                   signerAddress:
                     type: string
                     description: EOA address derived from private key (same on all chains)
-                    example: "0xabcdef1234567890..."
+                    example: '0xabcdef1234567890...'
                   smartWalletInfo:
                     type: object
                     properties:
                       address:
                         type: string
-                        example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                        example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
                       deployedOnChain:
                         type: integer
                         example: 421614
                       kernelVersion:
                         type: string
-                        example: "v3.1"
+                        example: 'v3.1'
                   chains:
                     type: array
                     items:
@@ -319,18 +319,18 @@ paths:
                           example: 421614
                         name:
                           type: string
-                          example: "Arbitrum Sepolia"
+                          example: 'Arbitrum Sepolia'
                         signerAddress:
                           type: string
                           description: EOA address (same across all chains)
-                          example: "0xabcdef1234567890..."
+                          example: '0xabcdef1234567890...'
                         smartWalletAddress:
                           type: string
                           description: Smart wallet address
-                          example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                          example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
                         note:
                           type: string
-                          example: "Smart wallet addresses may differ on different chains if deployed separately"
+                          example: 'Smart wallet addresses may differ on different chains if deployed separately'
                   instructions:
                     type: object
                     properties:
@@ -339,17 +339,17 @@ paths:
                         example: "Import the 'signerPrivateKey' into MetaMask. You'll see the 'signerAddress', not the smart wallet address."
                       networks:
                         type: string
-                        example: "Add testnet networks to MetaMask to see your signer account on different chains."
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
+                        example: 'Add testnet networks to MetaMask to see your signer account on different chains.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
           description: Wallet not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               example:
-                error: "Wallet not found"
+                error: 'Wallet not found'
 
   /api/wallet/balances:
     get:
@@ -367,7 +367,7 @@ paths:
             enum: [11155111, 421614, 11155420]
             example: 421614
       responses:
-        "200":
+        '200':
           description: Wallet balances retrieved successfully
           content:
             application/json:
@@ -379,78 +379,78 @@ paths:
                     properties:
                       address:
                         type: string
-                        example: "0x321fBF99d74b02f405CbD7D5b59F6D01A047814e"
+                        example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
                       chainId:
                         type: integer
                         example: 421614
                       chainName:
                         type: string
-                        example: "Arbitrum Sepolia"
+                        example: 'Arbitrum Sepolia'
                       balance:
                         type: object
                         properties:
                           raw:
                             type: string
                             description: Balance in wei (smallest unit)
-                            example: "1000000000000000000"
+                            example: '1000000000000000000'
                           formatted:
                             type: string
                             description: Human-readable balance
-                            example: "1.0"
+                            example: '1.0'
                           symbol:
                             type: string
-                            example: "ETH"
+                            example: 'ETH'
                   near:
                     type: object
                     properties:
                       accountId:
                         type: string
-                        example: "ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet"
+                        example: 'ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet'
                       balance:
                         type: object
                         properties:
                           raw:
                             type: string
                             description: Balance in yoctoNEAR (smallest unit)
-                            example: "5000000000000000000000000"
+                            example: '5000000000000000000000000'
                           formatted:
                             type: string
                             description: Human-readable balance
-                            example: "5.0000"
+                            example: '5.0000'
                           symbol:
                             type: string
-                            example: "NEAR"
-        "400":
+                            example: 'NEAR'
+        '400':
           description: Missing or invalid chainId parameter
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               examples:
                 missing_chain:
                   value:
-                    error: "chainId query parameter is required"
+                    error: 'chainId query parameter is required'
                 invalid_chain:
                   value:
-                    error: "Invalid chainId parameter"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
+                    error: 'Invalid chainId parameter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
           description: Wallet not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               example:
-                error: "Wallet not found"
-        "500":
+                error: 'Wallet not found'
+        '500':
           description: Failed to fetch balances
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: '#/components/schemas/Error'
               example:
-                error: "Failed to fetch balances"
+                error: 'Failed to fetch balances'
 
   /api/**:
     get:
@@ -461,10 +461,10 @@ paths:
         Handles various authentication endpoints provided by better-auth library.
         These include session management, token refresh, etc.
       responses:
-        "200":
+        '200':
           description: Varies by specific endpoint
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags:
         - Authentication
@@ -473,10 +473,10 @@ paths:
         Handles various authentication endpoints provided by better-auth library.
         These include session management, token refresh, etc.
       responses:
-        "200":
+        '200':
           description: Varies by specific endpoint
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
 components:
   securitySchemes:
@@ -497,7 +497,7 @@ components:
         error:
           type: string
           description: Error message
-          example: "Unauthorized"
+          example: 'Unauthorized'
 
     WalletInfo:
       type: object
@@ -507,19 +507,19 @@ components:
           properties:
             smartAccountAddress:
               type: string
-              example: "0x1234567890abcdef..."
+              example: '0x1234567890abcdef...'
             chainId:
               type: integer
               example: 421614
             kernelVersion:
               type: string
-              example: "v3.1"
+              example: 'v3.1'
         near:
           type: object
           properties:
             accountId:
               type: string
-              example: "user123.testnet"
+              example: 'user123.testnet'
 
   responses:
     Unauthorized:
@@ -527,16 +527,16 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Error"
+            $ref: '#/components/schemas/Error'
           example:
-            error: "Unauthorized"
+            error: 'Unauthorized'
 
     ServerError:
       description: Internal server error
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Error"
+            $ref: '#/components/schemas/Error'
 
 tags:
   - name: Authentication
