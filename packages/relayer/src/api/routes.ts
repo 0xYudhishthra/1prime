@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
 import Joi from "joi";
 import type { Logger } from "winston";
+import * as fs from "fs";
+import * as path from "path";
 import { RelayerService } from "../services/relayer";
 import {
   ApiResponse,
@@ -190,287 +192,46 @@ export function createRelayerRoutes(
       next();
     };
 
-  // Root endpoint with comprehensive API documentation
+  // Root endpoint with API overview
   router.get(
     "/",
     asyncHandler(async (req: Request, res: Response) => {
-      const apiDocumentation = {
+      const apiOverview = {
         service: "1Prime Relayer Service",
         version: "1.0.0",
         description:
           "1inch Fusion+ compatible relayer for EVM ↔ NEAR cross-chain atomic swaps",
-        documentation: "https://github.com/your-org/1prime",
-        whitepaper: "https://1inch.io/assets/1inch-fusion-plus.pdf",
         timestamp: Date.now(),
         status: "active",
 
-        // WebSocket support
-        websocket: {
-          enabled: true,
-          endpoint: "/ws",
-          events: [
-            "order_created",
-            "order_updates",
-            "auction_started",
-            "auction_progress",
-            "phase_transition",
-            "secret_revealed",
-            "order_completed",
-            "order_cancelled",
-          ],
-        },
-
-        // Complete API endpoints
-        endpoints: {
-          // Health & Documentation
-          "GET /": {
-            description: "Get API documentation and available endpoints",
-            body: null,
-            response: "This documentation",
-          },
-
-          "GET /health": {
-            description: "Get relayer health status and chain connectivity",
-            body: null,
-            response: "System health information",
-          },
-
-          // Order Management (New Flow)
-          "POST /orders/prepare": {
-            description:
-              "Generate unsigned Fusion+ order for frontend signing (Steps 3+4+5)",
-            body: {
-              userAddress: "0x... (maker address)",
-              amount: "Amount in wei/smallest unit",
-              fromToken: "Source token address or symbol",
-              toToken: "Destination token address or symbol",
-              fromChain: "ethereum | base | bsc | polygon | arbitrum",
-              toChain: "near | ethereum | base | bsc | polygon | arbitrum",
-              secretHash: "Previously generated secret hash from frontend",
-            },
-            response: "Unsigned Fusion+ order and orderHash for signing",
-          },
-
-          "POST /orders/submit": {
-            description: "Submit signed Fusion+ order to relayer (Step 6)",
-            body: {
-              orderHash: "0x... (from /orders/prepare response)",
-              signedOrder: "Signed SDK CrossChainOrder from frontend",
-              signature: "0x... (user wallet signature)",
-            },
-            response: "Order status and relayer processing confirmation",
-          },
-
-          "GET /orders": {
-            description: "Get all currently active orders",
-            body: null,
-            response: "List of active orders with basic status information",
-          },
-
-          "GET /orders/{hash}/status": {
-            description: "Get order status and details",
-            body: null,
-            response: "Complete order information and current phase",
-          },
-
-          // Resolver Operations
-          "POST /resolvers": {
-            description: "Register new resolver for order execution",
-            body: {
-              address: "0x...",
-              isKyc: "boolean",
-              bondAmount: "Amount in wei",
-              tier: "1-5 (resolver tier)",
-              reputation: "0-100 (reputation score)",
-            },
-            response: "Registration confirmation",
-          },
-
-          "POST /bids": {
-            description: "Submit resolver bid for order execution",
-            body: {
-              orderHash: "0x...",
-              resolver: "0x...",
-              estimatedGas: "Gas estimate for execution",
-              signature: "0x...",
-            },
-            response: "Bid acceptance status",
-          },
-
-          "POST /orders/{hash}/state": {
-            description: "Update order state (Step 9 - for resolvers only)",
-            body: {
-              newState: "waiting-for-secret | completed | failed",
-              resolverAddress: "0x... (resolver address)",
-            },
-            response: "State update confirmation",
-          },
-
-          "POST /orders/{hash}/claim": {
-            description: "Claim order for resolver processing (Step 7)",
-            body: {
-              resolverAddress: "0x... (resolver address)",
-              estimatedGas: "Gas estimate for execution",
-              signature: "0x... (resolver signature)",
-            },
-            response: "Order claim confirmation",
-          },
-
-          "POST /orders/{hash}/escrow-deployed": {
-            description: "Confirm escrow deployment (Step 7.1 & 9.1)",
-            body: {
-              escrowType: "src | dst",
-              escrowAddress: "0x... (deployed escrow contract address)",
-              transactionHash: "0x... (deployment transaction hash)",
-              blockNumber: "Block number of deployment",
-              resolverAddress: "0x... (resolver address)",
-              signature: "0x... (resolver signature)",
-            },
-            response: "Escrow deployment confirmation",
-          },
-
-          // Secret Management & Security
-          "GET /orders/{hash}/verify-escrows": {
-            description:
-              "Verify escrows are safe for secret revelation (Pre-Step 11)",
-            body: null,
-            response: {
-              safe: "boolean - whether it's safe to reveal secret",
-              verification: "Detailed escrow verification results",
-              srcEscrowVerified: "boolean - source escrow verification status",
-              dstEscrowVerified:
-                "boolean - destination escrow verification status",
-              issues: "array - any security issues found",
-            },
-          },
-
-          "POST /orders/{hash}/reveal-secret": {
-            description:
-              "Request secret revelation for order completion (Step 11)",
-            body: {
-              secret: "Secret value for HTLC unlock",
-              proof: "Proof of escrow creation",
-              signature: "0x...",
-            },
-            response: "Secret revelation status",
-          },
-
-          // System Statistics
-          "GET /stats": {
-            description: "Get system statistics and performance metrics",
-            body: null,
-            response: "System health, order counts, and performance data",
-          },
-
-          "GET /auctions/{orderHash}": {
-            description: "Get auction information for specific order",
-            body: null,
-            response: "Detailed auction state and bidding information",
-          },
-
-          // WebSocket Support
-          "GET /ws-info": {
-            description:
-              "Get WebSocket connection details and supported events",
-            body: null,
-            response: "WebSocket configuration and event types",
-          },
-        },
-
-        // Feature capabilities
-        features: {
-          "Dutch Auctions": "Competitive bidding with resolver selection",
-          "Per-Swap HTLCs": "Dynamic escrow contract deployment for each swap",
-          "Cross-Chain": "EVM ↔ NEAR bidirectional atomic swaps",
-          "SDK Integration": "Native support for 1inch Fusion+ SDK orders",
-          "Real-time Updates": "WebSocket support for live order tracking",
-          "Security Verification":
-            "Independent on-chain escrow verification before secret reveal",
-          "State Management":
-            "Complete order lifecycle tracking with phase transitions",
-        },
+        // Available endpoints
+        endpoints: [
+          "GET /health",
+          "GET /openapi",
+          "POST /orders/prepare",
+          "POST /orders/submit",
+          "GET /orders",
+          "GET /orders/{hash}/status",
+          "POST /resolvers",
+          "POST /bids",
+          "POST /orders/{hash}/state",
+          "POST /orders/{hash}/claim",
+          "POST /orders/{hash}/escrow-deployed",
+          "GET /orders/{hash}/verify-escrows",
+          "POST /orders/{hash}/reveal-secret",
+          "GET /stats",
+          "GET /auctions/{orderHash}",
+          "GET /ws-info",
+        ],
 
         // Supported chains
         supportedChains: {
           evm: ["ethereum", "base", "bsc", "polygon", "arbitrum"],
           near: ["near", "near-testnet"],
         },
-
-        // Examples
-        examples: {
-          "Create SDK Order with Partial Fills": {
-            method: "POST",
-            url: "/orders",
-            headers: {
-              "x-maker-address": "0x742d35Cc6634C0532925a3b8D2269055Ea10b4e6",
-            },
-            body: {
-              sdkOrder: {
-                inner: {
-                  settlementExtensionContract: { val: "0x..." },
-                  inner: {
-                    makerAsset: { val: "0x..." },
-                    takerAsset: { val: "0x..." },
-                    makingAmount: "1000000",
-                    takingAmount: "100000000000000000000000000",
-                    maker: {
-                      val: "0x742d35Cc6634C0532925a3b8D2269055Ea10b4e6",
-                    },
-                    receiver: {
-                      val: "0x742d35Cc6634C0532925a3b8D2269055Ea10b4e6",
-                    },
-                  },
-                  fusionExtension: {
-                    auctionDetails: {
-                      initialRateBump: 1000,
-                      points: [
-                        { delay: 0, coefficient: 1.0 },
-                        { delay: 60, coefficient: 0.5 },
-                      ],
-                      duration: 120000,
-                      startTime: Date.now(),
-                    },
-                    hashLockInfo: {
-                      merkleRoot: "0x...",
-                      merkleLeaves: ["0x...", "0x...", "0x..."],
-                    },
-                    dstChainId: 397,
-                    dstToken: { val: "near" },
-                    srcSafetyDeposit: "50000",
-                    dstSafetyDeposit: "50000",
-                    timeLocks: {
-                      srcWithdrawal: 300,
-                      srcPublicWithdrawal: 600,
-                      srcCancellation: 1800,
-                      srcPublicCancellation: 3600,
-                      dstWithdrawal: 300,
-                      dstPublicWithdrawal: 600,
-                      dstCancellation: 1800,
-                    },
-                  },
-                },
-              },
-              signature: "0x...",
-              sourceChain: "ethereum",
-              destinationChain: "near",
-            },
-          },
-
-          "Submit Partial Fill": {
-            method: "POST",
-            url: "/partial-fills",
-            body: {
-              orderHash: "0x...",
-              resolver: "0x...",
-              fillAmount: "250000",
-              proposedSecretIndex: 1,
-              signature: "0x...",
-            },
-          },
-        },
       };
 
-      return res.json(createResponse(true, apiDocumentation));
+      return res.json(createResponse(true, apiOverview));
     })
   );
 
@@ -483,6 +244,33 @@ export function createRelayerRoutes(
       res
         .status(statusCode)
         .json(createResponse(health.status === "healthy", health));
+    })
+  );
+
+  // OpenAPI specification endpoint
+  router.get(
+    "/openapi",
+    asyncHandler(async (req: Request, res: Response) => {
+      try {
+        const openApiPath = path.join(__dirname, "../../openapi.yaml");
+        const openApiContent = fs.readFileSync(openApiPath, "utf8");
+
+        res.setHeader("Content-Type", "application/x-yaml");
+        res.send(openApiContent);
+      } catch (error) {
+        logger.error("Failed to serve OpenAPI specification", {
+          error: (error as Error).message,
+        });
+        res
+          .status(500)
+          .json(
+            createResponse(
+              false,
+              undefined,
+              "Failed to load OpenAPI specification"
+            )
+          );
+      }
     })
   );
 
