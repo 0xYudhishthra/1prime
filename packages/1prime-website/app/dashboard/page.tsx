@@ -14,6 +14,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Copy, Wallet, Loader2, RefreshCw } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 interface TokenBalance {
   token: {
@@ -66,30 +68,25 @@ interface WalletData {
   };
 }
 
-export default function DashboardPage() {
+function DashboardPage() {
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const { token, isAuthenticated, logout } = useAuth();
 
   const fetchWalletData = async () => {
-    // Check if we're on the client side
-    if (typeof window === 'undefined') {
-      setLoading(false);
-      return;
-    }
-
-    const token = localStorage.getItem('authToken');
-    console.log(
-      'Retrieved token:',
-      token ? token.substring(0, 20) + '...' : 'null'
-    ); // Debug log
     if (!token) {
       setError('No auth token found. Please sign in.');
       setLoading(false);
       return;
     }
+
+    console.log(
+      'Retrieved token:',
+      token ? token.substring(0, 20) + '...' : 'null'
+    ); // Debug log
 
     try {
       console.log(
@@ -184,17 +181,11 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-gray-200 px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <div className="mx-auto max-w-6xl p-6">
+        {/* Dashboard Header */}
+        <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Home
-              </Button>
-            </Link>
-            <div className="text-2xl font-bold">1Prime Wallet</div>
+            <h1 className="text-3xl font-bold">1Prime Wallet</h1>
           </div>
           <Button
             onClick={handleRefresh}
@@ -208,9 +199,6 @@ export default function DashboardPage() {
             Refresh
           </Button>
         </div>
-      </header>
-
-      <div className="mx-auto max-w-6xl p-6">
         {/* Summary */}
         <div className="mb-8">
           <h1 className="mb-2 text-3xl font-bold">Your Cross-Chain Wallet</h1>
@@ -460,5 +448,13 @@ export default function DashboardPage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPageWrapper() {
+  return (
+    <ProtectedRoute>
+      <DashboardPage />
+    </ProtectedRoute>
   );
 }
