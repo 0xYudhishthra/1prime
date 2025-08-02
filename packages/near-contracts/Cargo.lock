@@ -167,6 +167,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "escrow-src"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "hex",
+ "near-sdk",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -258,6 +270,16 @@ checksum = "28a1951e112f1e8fee9142152e628778b277bee6d88cfe9ed7d40a287c957651"
 dependencies = [
  "borsh",
  "serde",
+]
+
+[[package]]
+name = "near-resolver"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "near-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

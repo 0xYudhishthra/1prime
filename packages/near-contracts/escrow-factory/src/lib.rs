@@ -60,7 +60,8 @@ pub struct EscrowCreationResult {
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct EscrowFactory {
     pub owner: AccountId,
-    pub escrow_wasm_code: Vec<u8>,
+    pub escrow_src_wasm_code: Vec<u8>, // Source escrow WASM
+    pub escrow_dst_wasm_code: Vec<u8>, // Destination escrow WASM
     pub deployed_escrows: LookupMap<String, AccountId>, // orderHash -> escrow_account
     pub escrow_counter: u64,
     pub rescue_delay: u32, // Delay for emergency fund rescue
@@ -72,17 +73,26 @@ impl EscrowFactory {
     pub fn new(owner: AccountId, rescue_delay: u32) -> Self {
         Self {
             owner,
-            escrow_wasm_code: Vec::new(),
+            escrow_src_wasm_code: Vec::new(),
+            escrow_dst_wasm_code: Vec::new(),
             deployed_escrows: LookupMap::new("escrows".as_bytes()),
             escrow_counter: 0,
             rescue_delay,
         }
     }
 
-    /// Set the escrow contract WASM code (only owner)
-    pub fn set_escrow_code(&mut self, escrow_code: Vec<u8>) {
+    /// Set the source escrow WASM code (only owner)
+    pub fn set_escrow_src_code(&mut self, escrow_code: Vec<u8>) {
         self.assert_owner();
-        self.escrow_wasm_code = escrow_code;
+        self.escrow_src_wasm_code = escrow_code;
+        env::log_str("Source escrow WASM code updated");
+    }
+
+    /// Set the destination escrow WASM code (only owner)
+    pub fn set_escrow_dst_code(&mut self, escrow_code: Vec<u8>) {
+        self.assert_owner();
+        self.escrow_dst_wasm_code = escrow_code;
+        env::log_str("Destination escrow WASM code updated");
     }
 
     /// Create destination escrow contract (equivalent to EVM createDstEscrow)
@@ -138,7 +148,7 @@ impl EscrowFactory {
             .create_account()
             .add_full_access_key(env::signer_account_pk())
             .transfer(NearToken::from_yoctonear(immutables.safety_deposit)) // Transfer safety deposit
-            .deploy_contract(self.escrow_wasm_code.clone())
+            .deploy_contract(self.escrow_dst_wasm_code.clone())
             .function_call(
                 "init".to_string(),
                 near_sdk::serde_json::to_vec(&InitEscrowArgs {
@@ -158,6 +168,110 @@ impl EscrowFactory {
                     .with_static_gas(CALLBACK_GAS)
                     .on_escrow_created(immutables.order_hash, escrow_id),
             )
+    }
+
+    /// Creates a source escrow on NEAR for NEAR -> ETH swaps
+    /// This replaces the LOP postInteraction mechanism used on EVM chains
+    #[payable]
+    pub fn create_src_escrow(
+        &mut self,
+        order_hash: String,
+        immutables: Immutables,
+        dst_complement: DstImmutablesComplement,
+    ) -> Promise {
+        // Only authorized resolver can create source escrows
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner,
+            "Only owner/resolver can create source escrows"
+        );
+
+        // Set deployed timestamp
+        let mut immutables = immutables;
+        immutables.timelocks.deployed_at = env::block_timestamp_ms() / 1000; // Convert to seconds
+
+        // Validate required deposits
+        let required_deposit = if immutables.token.as_str() == "near" {
+            immutables.amount + immutables.safety_deposit
+        } else {
+            immutables.safety_deposit // For NEP-141 tokens
+        };
+
+        assert!(
+            env::attached_deposit().as_yoctonear() >= required_deposit,
+            "Insufficient deposit: required {}, got {}",
+            required_deposit,
+            env::attached_deposit().as_yoctonear()
+        );
+
+        // Generate deterministic escrow account
+        let escrow_account = self.compute_escrow_address(&immutables);
+
+        // Log event similar to EVM's SrcEscrowCreated
+        log!(
+            "SrcEscrowCreated: {{\"immutables\": {:?}, \"complement\": {:?}}}",
+            immutables,
+            dst_complement
+        );
+
+        // Prepare initialization
+        let init_args = InitEscrowArgs {
+            immutables: immutables.clone(),
+            factory: env::current_account_id(),
+        };
+
+        // Deploy escrow contract
+        let promise = Promise::new(escrow_account.clone())
+            .create_account()
+            .transfer(env::attached_deposit())
+            .deploy_contract(self.escrow_src_wasm_code.clone())
+            .function_call(
+                "new".to_string(),
+                near_sdk::serde_json::to_vec(&init_args).unwrap(),
+                0,
+                Gas::from_tgas(30),
+            );
+
+        // Store mapping
+        self.deployed_escrows.insert(&order_hash, &escrow_account);
+        self.escrow_counter += 1;
+
+        // Callback for verification
+        promise.then(Promise::new(env::current_account_id()).function_call(
+            "on_src_escrow_created".to_string(),
+            near_sdk::serde_json::to_vec(&(order_hash.clone(), escrow_account.clone())).unwrap(),
+            0,
+            Gas::from_tgas(5),
+        ))
+    }
+
+    #[private]
+    pub fn on_src_escrow_created(
+        &mut self,
+        order_hash: String,
+        escrow_account: AccountId,
+        #[callback_result] call_result: Result<(), near_sdk::PromiseError>,
+    ) -> EscrowCreationResult {
+        match call_result {
+            Ok(_) => {
+                log!("Source escrow created: {}", escrow_account);
+                EscrowCreationResult {
+                    escrow_account,
+                    order_hash,
+                    success: true,
+                }
+            }
+            Err(e) => {
+                log!("Failed to create source escrow: {:?}", e);
+                self.deployed_escrows.remove(&order_hash);
+                self.escrow_counter -= 1;
+                EscrowCreationResult {
+                    escrow_account,
+                    order_hash,
+                    success: false,
+                }
+            }
+        }
     }
 
     #[private]
@@ -268,7 +382,8 @@ impl EscrowFactory {
             owner: self.owner.clone(),
             total_escrows_created: self.escrow_counter,
             rescue_delay: self.rescue_delay,
-            has_escrow_code: !self.escrow_wasm_code.is_empty(),
+            has_src_escrow_code: !self.escrow_src_wasm_code.is_empty(),
+            has_dst_escrow_code: !self.escrow_dst_wasm_code.is_empty(),
         }
     }
 
@@ -297,7 +412,8 @@ pub struct FactoryStats {
     pub owner: AccountId,
     pub total_escrows_created: u64,
     pub rescue_delay: u32,
-    pub has_escrow_code: bool,
+    pub has_src_escrow_code: bool,
+    pub has_dst_escrow_code: bool,
 }
 
 impl Timelocks {

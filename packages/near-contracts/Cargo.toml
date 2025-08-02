@@ -2,7 +2,9 @@
 resolver = "2"
 members = [
     "escrow-factory",
-    "escrow-dst"
+    "escrow-dst",
+    "escrow-src",
+    "resolver"
 ]
 
 [workspace.dependencies]
