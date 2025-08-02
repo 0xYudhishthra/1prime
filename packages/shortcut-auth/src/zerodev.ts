@@ -5,8 +5,6 @@ import {
 } from '@zerodev/sdk';
 import { signerToEcdsaValidator } from '@zerodev/ecdsa-validator';
 import { toMultiChainECDSAValidator } from '@zerodev/multi-chain-ecdsa-validator';
-// TODO: Import CAB functionality when available
-// import { createIntentClient } from "@zerodev/intent-client";
 
 import {
   http,
@@ -16,6 +14,8 @@ import {
   parseEther,
   formatEther,
   Chain,
+  formatUnits,
+  getAddress,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { getEntryPoint, KERNEL_V3_1 } from '@zerodev/sdk/constants';
@@ -23,7 +23,91 @@ import { EntryPointVersion } from 'viem/account-abstraction';
 import { GetKernelVersion, Signer } from '@zerodev/sdk/types';
 import { SUPPORTED_CHAINS, getAllSupportedChains } from './chains';
 
-// Types for our abstracted functions
+// ERC-20 ABI for token operations
+const ERC20_ABI = [
+  {
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+const COMMON_TESTNET_TOKENS: {
+  [chainId: number]: { address: string; symbol: string }[];
+} = {
+  11155111: [
+    // Ethereum Sepolia
+    { address: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9', symbol: 'WETH' },
+    { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', symbol: 'USDC' },
+  ],
+  421614: [
+    // Arbitrum Sepolia
+    { address: '0x980B62Da83eFF3D4576C647993b0c1D7faF17C73', symbol: 'WETH' },
+    { address: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', symbol: 'USDC' },
+  ],
+  11155420: [
+    // Optimism Sepolia
+    { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH' },
+    { address: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', symbol: 'USDC' },
+  ],
+};
+
+// Updated types for multi-token support
+export interface TokenInfo {
+  address: string; // Contract address (or 'native' for native tokens)
+  symbol: string;
+  name: string;
+  decimals: number;
+  chainId?: number; // For EVM tokens
+  accountId?: string; // For NEAR tokens
+}
+
+export interface TokenBalance {
+  token: TokenInfo;
+  balance: {
+    raw: string;
+    formatted: string;
+  };
+  chainBreakdown?: {
+    chainId: number;
+    chainName: string;
+    balance: {
+      raw: string;
+      formatted: string;
+    };
+  }[];
+}
+
+export interface ChainTokenBalance {
+  chainId: number;
+  chainName: string;
+  address: string; // Wallet address
+  tokens: TokenBalance[];
+}
+
 export interface WalletAddresses {
   smartWallet: {
     address: string;
@@ -35,38 +119,265 @@ export interface WalletAddresses {
   };
 }
 
-export interface ChainBalance {
-  chainId: number;
-  chainName: string;
-  address: string;
-  balance: {
-    raw: string;
-    formatted: string;
-    symbol: string;
-  };
-}
-
-export interface TokenBalance {
-  token: string;
-  symbol: string;
-  totalBalance: {
-    raw: string;
-    formatted: string;
-  };
-  chainBreakdown: {
-    chainId: number;
-    chainName: string;
-    balance: {
-      raw: string;
-      formatted: string;
-    };
-  }[];
-}
-
 export interface MultiChainBalances {
-  totalBalances: TokenBalance[];
-  chainBreakdown: ChainBalance[];
-  supportedChains: { chainId: number; name: string }[];
+  evm: {
+    address: string;
+    totalBalances: TokenBalance[]; // Aggregated across all chains
+    chainBreakdown: ChainTokenBalance[]; // Per-chain breakdown
+    supportedChains: { chainId: number; name: string }[];
+    note: string;
+  };
+  near: {
+    accountId: string;
+    tokens: TokenBalance[];
+  };
+  summary: {
+    totalEvmChains: number;
+    evmChainsWithBalance: number;
+    totalEvmTokens: number;
+    totalNearTokens: number;
+    hasNearBalance: boolean;
+  };
+}
+
+// Get ERC-20 token info
+async function getTokenInfo(
+  publicClient: any,
+  tokenAddress: string,
+  chainId: number
+): Promise<TokenInfo | null> {
+  try {
+    // Ensure address is properly checksummed
+    const checksummedAddress = getAddress(tokenAddress);
+
+    const [symbol, name, decimals] = await Promise.all([
+      publicClient.readContract({
+        address: checksummedAddress,
+        abi: ERC20_ABI,
+        functionName: 'symbol',
+      }),
+      publicClient.readContract({
+        address: checksummedAddress,
+        abi: ERC20_ABI,
+        functionName: 'name',
+      }),
+      publicClient.readContract({
+        address: checksummedAddress,
+        abi: ERC20_ABI,
+        functionName: 'decimals',
+      }),
+    ]);
+
+    return {
+      address: checksummedAddress,
+      symbol: symbol as string,
+      name: name as string,
+      decimals: decimals as number,
+      chainId,
+    };
+  } catch (error) {
+    console.error(
+      `Failed to get token info for ${tokenAddress} on chain ${chainId}:`,
+      error
+    );
+    return null;
+  }
+}
+
+// Get ERC-20 token balance
+async function getTokenBalance(
+  publicClient: any,
+  tokenAddress: string,
+  walletAddress: string,
+  tokenInfo: TokenInfo
+): Promise<{ raw: string; formatted: string } | null> {
+  try {
+    // Ensure addresses are properly checksummed
+    const checksummedTokenAddress = getAddress(tokenAddress);
+    const checksummedWalletAddress = getAddress(walletAddress);
+
+    const balance = await publicClient.readContract({
+      address: checksummedTokenAddress,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [checksummedWalletAddress],
+    });
+
+    return {
+      raw: balance.toString(),
+      formatted: formatUnits(balance, tokenInfo.decimals),
+    };
+  } catch (error) {
+    console.error(`Failed to get token balance for ${tokenAddress}:`, error);
+    return null;
+  }
+}
+
+// Get all token balances for a specific chain
+async function getChainTokenBalances(
+  chainConfig: { chain: Chain; chainId: number; name: string },
+  rpcUrl: string,
+  walletAddress: string
+): Promise<ChainTokenBalance> {
+  const publicClient = createPublicClient({
+    transport: http(rpcUrl),
+    chain: chainConfig.chain,
+  });
+
+  const tokens: TokenBalance[] = [];
+
+  // Get native ETH balance
+  try {
+    const checksummedWalletAddress = getAddress(walletAddress);
+    const nativeBalance = await publicClient.getBalance({
+      address: checksummedWalletAddress,
+    });
+
+    tokens.push({
+      token: {
+        address: 'native',
+        symbol: 'ETH',
+        name: 'Ethereum',
+        decimals: 18,
+        chainId: chainConfig.chainId,
+      },
+      balance: {
+        raw: nativeBalance.toString(),
+        formatted: formatEther(nativeBalance),
+      },
+    });
+  } catch (error) {
+    console.error(
+      `Failed to get native balance for ${chainConfig.name}:`,
+      error
+    );
+  }
+
+  // Get ERC-20 token balances
+  const tokenAddresses = COMMON_TESTNET_TOKENS[chainConfig.chainId] || [];
+
+  console.log(
+    `Checking ${tokenAddresses.length} tokens on ${chainConfig.name}...`
+  );
+
+  for (const tokenConfig of tokenAddresses) {
+    try {
+      console.log(
+        `  Checking ${tokenConfig.symbol} at ${tokenConfig.address}...`
+      );
+
+      const tokenInfo = await getTokenInfo(
+        publicClient,
+        tokenConfig.address,
+        chainConfig.chainId
+      );
+      if (!tokenInfo) {
+        console.log(
+          `  ⚠️  ${tokenConfig.symbol}: Contract not found or invalid`
+        );
+        continue;
+      }
+
+      const balance = await getTokenBalance(
+        publicClient,
+        tokenConfig.address,
+        walletAddress,
+        tokenInfo
+      );
+      if (!balance) {
+        console.log(`  ⚠️  ${tokenConfig.symbol}: Failed to get balance`);
+        continue;
+      }
+
+      if (BigInt(balance.raw) === 0n) {
+        console.log(`  ➖ ${tokenConfig.symbol}: Zero balance`);
+        continue; // Only include non-zero balances
+      }
+
+      console.log(
+        `  ✅ ${tokenConfig.symbol}: ${balance.formatted} ${tokenInfo.symbol}`
+      );
+      tokens.push({
+        token: tokenInfo,
+        balance,
+      });
+    } catch (error) {
+      console.error(
+        `  ❌ Failed to process token ${tokenConfig.symbol} on ${chainConfig.name}:`,
+        error
+      );
+    }
+  }
+
+  console.log(
+    `${chainConfig.name}: Found ${tokens.length} tokens with balances`
+  );
+
+  return {
+    chainId: chainConfig.chainId,
+    chainName: chainConfig.name,
+    address: walletAddress,
+    tokens,
+  };
+}
+
+// Aggregate token balances across chains
+function aggregateTokenBalances(
+  chainBalances: ChainTokenBalance[]
+): TokenBalance[] {
+  const tokenMap = new Map<string, TokenBalance>();
+
+  for (const chainBalance of chainBalances) {
+    for (const tokenBalance of chainBalance.tokens) {
+      const tokenKey = tokenBalance.token.symbol; // Group by symbol
+
+      if (tokenMap.has(tokenKey)) {
+        const existing = tokenMap.get(tokenKey)!;
+
+        // Add to existing balance
+        const newRaw = (
+          BigInt(existing.balance.raw) + BigInt(tokenBalance.balance.raw)
+        ).toString();
+        const newFormatted = formatUnits(
+          BigInt(newRaw),
+          existing.token.decimals
+        );
+
+        // Add to chain breakdown
+        if (!existing.chainBreakdown) existing.chainBreakdown = [];
+        existing.chainBreakdown.push({
+          chainId: chainBalance.chainId,
+          chainName: chainBalance.chainName,
+          balance: tokenBalance.balance,
+        });
+
+        existing.balance = {
+          raw: newRaw,
+          formatted: newFormatted,
+        };
+      } else {
+        // Create new token entry
+        tokenMap.set(tokenKey, {
+          token: tokenBalance.token,
+          balance: tokenBalance.balance,
+          chainBreakdown: [
+            {
+              chainId: chainBalance.chainId,
+              chainName: chainBalance.chainName,
+              balance: tokenBalance.balance,
+            },
+          ],
+        });
+      }
+    }
+  }
+
+  return Array.from(tokenMap.values()).sort((a, b) => {
+    // Sort by total value (ETH first, then by balance)
+    if (a.token.symbol === 'ETH') return -1;
+    if (b.token.symbol === 'ETH') return 1;
+    return parseFloat(b.balance.formatted) - parseFloat(a.balance.formatted);
+  });
 }
 
 export const createMultiChainAccount = async (rpcUrls: {
@@ -227,105 +538,78 @@ export const getWalletAddresses = async (
   };
 };
 
+// Export function to get testnet token addresses for faucets
+export const getTestnetTokenAddresses = () => {
+  return COMMON_TESTNET_TOKENS;
+};
+
+// Export function to get faucet information
+export const getTestnetFaucetInfo = () => {
+  return {
+    nativeTokens: {
+      'Ethereum Sepolia': 'https://sepoliafaucet.com/',
+      'Arbitrum Sepolia': 'https://faucet.quicknode.com/arbitrum/sepolia',
+      'Optimism Sepolia': 'https://faucet.quicknode.com/optimism/sepolia',
+    },
+    erc20Tokens: {
+      note: 'Most ERC-20 tokens on testnets require minting from their contracts or specific faucets',
+      instructions:
+        'Visit the token contract on etherscan and look for mint/faucet functions, or check project documentation for testnet token faucets',
+    },
+    supportedTokens: COMMON_TESTNET_TOKENS,
+  };
+};
+
 export const getMultiChainBalances = async (
   signerPrivateKey: string,
   smartAccountAddress: string,
   rpcUrls: { [chainId: number]: string }
 ): Promise<MultiChainBalances> => {
   const chains = getAllSupportedChains();
-  const signer = privateKeyToAccount(signerPrivateKey as `0x${string}`);
+  console.log('Fetching token balances from all supported chains...');
 
-  // TODO: Implement ZeroDev CAB (Chain-Abstracted Balance) when available
-  // For now, using individual chain queries as the primary method
-  //
-  // Future CAB implementation:
-  // const intentClient = createIntentClient({
-  //   // Configure with your ZeroDev project details
-  // });
-  // const cab = await intentClient.getCAB({
-  //   networks: chains.map(c => c.chainId),
-  //   tokenTickers: ["ETH", "USDC", "WETH"], // optional
-  // });
-
-  console.log('Fetching balances from all supported chains...');
-
-  // Get balances from all chains
-  const chainBreakdown: ChainBalance[] = await Promise.all(
-    chains.map(async ({ chain, chainId, name }) => {
-      try {
-        const publicClient = createPublicClient({
-          transport: http(rpcUrls[chainId]),
-          chain,
-        });
-
-        const balance = await publicClient.getBalance({
-          address: smartAccountAddress as `0x${string}`,
-        });
-
-        console.log(`${name} balance: ${formatEther(balance)} ETH`);
-
-        return {
-          chainId,
-          chainName: name,
-          address: smartAccountAddress,
-          balance: {
-            raw: balance.toString(),
-            formatted: formatEther(balance),
-            symbol: 'ETH',
-          },
-        };
-      } catch (error) {
-        console.error(`Failed to fetch balance for ${name}:`, error);
-        return {
-          chainId,
-          chainName: name,
-          address: smartAccountAddress,
-          balance: {
-            raw: '0',
-            formatted: '0',
-            symbol: 'ETH',
-          },
-        };
-      }
+  // Get token balances from all EVM chains
+  const chainBalances = await Promise.all(
+    chains.map(async (chainConfig) => {
+      const rpcUrl = rpcUrls[chainConfig.chainId];
+      return getChainTokenBalances(chainConfig, rpcUrl, smartAccountAddress);
     })
   );
 
-  // Calculate total ETH balance across all chains
-  const totalEthBalance = chainBreakdown.reduce(
-    (sum, chain) => sum + BigInt(chain.balance.raw),
-    0n
-  );
+  // Aggregate balances across chains
+  const totalBalances = aggregateTokenBalances(chainBalances);
 
-  console.log(
-    `Total ETH across all chains: ${formatEther(totalEthBalance)} ETH`
-  );
+  console.log(`Found ${totalBalances.length} unique tokens across all chains`);
 
-  // Create unified token balance structure
-  const totalBalances: TokenBalance[] = [
-    {
-      token: 'ETH',
-      symbol: 'ETH',
-      totalBalance: {
-        raw: totalEthBalance.toString(),
-        formatted: formatEther(totalEthBalance),
-      },
-      chainBreakdown: chainBreakdown
-        .map((chain) => ({
-          chainId: chain.chainId,
-          chainName: chain.chainName,
-          balance: {
-            raw: chain.balance.raw,
-            formatted: chain.balance.formatted,
-          },
-        }))
-        .filter((chain) => BigInt(chain.balance.raw) > 0n), // Only include chains with balance
-    },
-  ];
+  // Calculate summary statistics
+  const evmChainsWithBalance = chainBalances.filter((chain) =>
+    chain.tokens.some((token) => parseFloat(token.balance.formatted) > 0)
+  ).length;
+
+  const totalEvmTokens = totalBalances.length;
 
   return {
-    totalBalances,
-    chainBreakdown,
-    supportedChains: chains.map((c) => ({ chainId: c.chainId, name: c.name })),
+    evm: {
+      address: smartAccountAddress,
+      totalBalances,
+      chainBreakdown: chainBalances,
+      supportedChains: chains.map((c) => ({
+        chainId: c.chainId,
+        name: c.name,
+      })),
+      note: 'Token balances aggregated across all supported EVM chains',
+    },
+    near: {
+      accountId: '', // Will be filled by the caller
+      tokens: [], // Will be filled by NEAR token discovery
+    },
+    summary: {
+      totalEvmChains: chains.length,
+      evmChainsWithBalance,
+      totalEvmTokens,
+      totalNearTokens: 0, // Will be updated with NEAR tokens
+      hasNearBalance: false, // Will be updated with NEAR balance check
+    },
   };
 };
 
