@@ -8,6 +8,14 @@ import {
   getTestnetTokenAddresses,
   getTestnetFaucetInfo,
 } from './zerodev';
+import {
+  createMultiChainAccount,
+  sendTransaction,
+  getWalletAddresses,
+  getMultiChainBalances,
+  getTestnetTokenAddresses,
+  getTestnetFaucetInfo,
+} from './zerodev';
 import { smartWallet } from './db/schema';
 import { createDb } from './db';
 import { eq } from 'drizzle-orm';
