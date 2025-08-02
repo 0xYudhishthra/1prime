@@ -6,16 +6,26 @@
 const { execSync } = require("child_process");
 const crypto = require("crypto");
 
-// Testnet configuration
+// Testnet configuration - using deployed contracts
 const config = {
   networkId: "testnet",
   nodeUrl: "https://rpc.testnet.near.org",
   walletUrl: "https://wallet.testnet.near.org",
   accounts: {
-    factory: process.env.FACTORY_ACCOUNT || "escrow-factory.testnet",
-    resolver: process.env.RESOLVER_ACCOUNT || "escrow-resolver.testnet",
-    maker: process.env.MAKER_ACCOUNT || "maker-test.testnet",
-    taker: process.env.TAKER_ACCOUNT || "taker-test.testnet",
+    factory:
+      process.env.FACTORY_ACCOUNT || "1prime-global-factory-contract.testnet",
+    resolver:
+      process.env.RESOLVER_ACCOUNT || "1prime-global-resolver-contract.testnet",
+    escrowSrcTemplate:
+      process.env.ESCROW_SRC_TEMPLATE ||
+      "1prime-global-escrow-src-template.testnet",
+    escrowDstTemplate:
+      process.env.ESCROW_DST_TEMPLATE ||
+      "1prime-global-escrow-dst-template.testnet",
+    owner: process.env.OWNER || "1prime-global-owner.testnet",
+    // Test accounts for making transactions
+    maker: process.env.MAKER_ACCOUNT || "1prime-global-maker.testnet",
+    taker: process.env.TAKER_ACCOUNT || "1prime-global-taker.testnet",
   },
 };
 
@@ -43,12 +53,6 @@ async function runNearCommand(command) {
     const output = execSync(command, {
       stdio: "pipe",
       encoding: "utf8",
-      env: {
-        ...process.env,
-        NEAR_CLI_LOCALNET_NETWORK_ID: config.networkId,
-        NEAR_NODE_URL: config.nodeUrl,
-        NEAR_WALLET_URL: config.walletUrl,
-      },
     });
     return { success: true, output: output.trim() };
   } catch (error) {
@@ -91,47 +95,62 @@ async function main() {
 
   logSection("Step 2: Create Source Escrow on NEAR");
 
-  const currentTime = Date.now();
-  const orderHash = crypto.randomBytes(32).toString("hex");
+  const currentTime = Math.floor(Date.now() / 1000); // Convert to seconds
+  const orderSalt = crypto.randomBytes(32).toString("hex");
+  const makingAmount = "1000000000000000000000"; // 1 NEAR (smaller test amount)
+  const takingAmount = "1000000"; // 1 USDC (6 decimals, smaller test amount)
+  const safetyDeposit = "100000000000000000000"; // 0.1 NEAR (smaller test amount)
 
-  // Prepare immutables for source escrow
-  const immutables = {
-    order_hash: orderHash,
-    hashlock: hashlock,
-    maker: config.accounts.maker,
-    taker: config.accounts.resolver,
-    token: "near",
-    amount: "2000000000000000000000000", // 2 NEAR
-    safety_deposit: "100000000000000000000000", // 0.1 NEAR
-    timelocks: {
-      deployed_at: currentTime,
-      src_withdrawal: 300,
-      src_public_withdrawal: 600,
-      src_cancellation: 900,
-      src_public_cancellation: 1200,
-      dst_withdrawal: 180,
-      dst_public_withdrawal: 360,
-      dst_cancellation: 720,
+  // Prepare order according to the ABI - FIELD ORDER MATTERS!
+  const order = {
+    maker: config.accounts.maker, // 1st
+    taker: config.accounts.resolver, // 2nd
+    making_amount: makingAmount, // 3rd
+    taking_amount: takingAmount, // 4th
+    maker_asset: "near", // 5th - Native NEAR token
+    taker_asset: "USDC", // 6th - ETH asset identifier
+    salt: orderSalt, // 7th
+    extension: {
+      // 8th - OrderExtension field order
+      hashlock: hashlock, // 1st
+      src_chain_id: "397", // 2nd - NEAR (u64 as string)
+      dst_chain_id: "1", // 3rd - Ethereum (u64 as string)
+      src_safety_deposit: safetyDeposit, // 4th - 0.1 NEAR
+      dst_safety_deposit: safetyDeposit, // 5th - 0.1 NEAR equivalent on ETH
+      timelocks: {
+        // 6th - Timelocks field order
+        deployed_at: currentTime.toString(), // 1st - u64 as string
+        src_withdrawal: 300, // 2nd - u32 as number
+        src_public_withdrawal: 600, // 3rd - u32 as number
+        src_cancellation: 900, // 4th - u32 as number
+        src_public_cancellation: 1200, // 5th - u32 as number
+        dst_withdrawal: 180, // 6th - u32 as number
+        dst_public_withdrawal: 360, // 7th - u32 as number
+        dst_cancellation: 720, // 8th - u32 as number
+      },
     },
   };
 
-  const dstComplement = {
-    safety_deposit: "100000000000000000000000",
-    deployed_at: currentTime,
-  };
+  const orderSignature = "mock_signature_" + orderSalt.slice(0, 16);
 
   // Create source escrow via resolver
   log("🔄 Creating source escrow...", "yellow");
+
+  const deployArgs = {
+    order: order,
+    order_signature: orderSignature,
+    amount: makingAmount,
+  };
+
+  // Debug: Log the JSON being sent
+  log(`📋 Deploy args: ${JSON.stringify(deployArgs, null, 2)}`, "blue");
+
   const createSrcResult = await runNearCommand(
-    `near call ${config.accounts.resolver} deploy_src '${JSON.stringify({
-      order_hash: orderHash,
-      immutables: immutables,
-      dst_complement: dstComplement,
-    })}' --accountId ${
-      config.accounts.maker
-    } --gas 300000000000000 --amount 2.1 --nodeUrl ${
-      config.nodeUrl
-    } --networkId ${config.networkId}`
+    `near call ${config.accounts.resolver} deploy_src '${JSON.stringify(
+      deployArgs
+    )}' --accountId ${
+      config.accounts.owner
+    } --gas 300000000000000 --amount 1.1 --networkId ${config.networkId}`
   );
 
   if (createSrcResult.success) {
@@ -152,7 +171,7 @@ async function main() {
 
   // Get escrow address from factory
   const getAddressResult = await runNearCommand(
-    `near view ${config.accounts.factory} get_escrow_address '{"order_hash": "${orderHash}"}' --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`
+    `near view ${config.accounts.factory} get_escrow_address '{"order_hash": "${orderSalt}"}' --networkId ${config.networkId}`
   );
 
   if (getAddressResult.success) {
@@ -185,7 +204,7 @@ async function main() {
   // In a real scenario, you would wait for the resolver to execute these steps
   log("\n💡 For testing, you can manually trigger the withdrawal:", "blue");
   log(
-    `   near call <escrow_address> withdraw '{"secret": "${secret}"}' --accountId ${config.accounts.resolver} --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`,
+    `   near call <escrow_address> withdraw '{"secret": "${secret}"}' --accountId ${config.accounts.resolver} --networkId ${config.networkId}`,
     "yellow"
   );
 
@@ -193,9 +212,10 @@ async function main() {
 
   log("🎉 NEAR → ETH swap simulation completed!", "green");
   log("\n📋 Swap Details:", "blue");
-  log(`   • Order Hash: ${orderHash}`, "blue");
-  log(`   • Amount: 2 NEAR → ETH/USDC`, "blue");
+  log(`   • Order Salt: ${orderSalt}`, "blue");
+  log(`   • Amount: 1 NEAR → 1 USDC`, "blue");
   log(`   • Secret: ${secret}`, "blue");
+  log(`   • Hashlock: ${hashlock}`, "blue");
   log(`   • Maker: ${config.accounts.maker}`, "blue");
   log(`   • Resolver: ${config.accounts.resolver}`, "blue");
 

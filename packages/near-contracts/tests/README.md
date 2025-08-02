@@ -6,8 +6,8 @@ This directory contains comprehensive testing tools for the NEAR cross-chain esc
 
 The testing setup includes:
 
-- **NEAR Testnet Integration**: Real blockchain environment testing
-- **Automated Test Scripts**: Comprehensive contract testing with multiple scenarios  
+- **NEAR Testnet Integration**: Real blockchain environment testing with pre-deployed contracts
+- **Contract Interaction Tests**: Testing deployed factory and resolver contract functionality
 - **Example Scripts**: Interactive demonstrations of cross-chain swap flows
 - **Performance Monitoring**: Gas usage and execution time analysis
 
@@ -26,7 +26,7 @@ Set up your testnet accounts (optional - defaults will be used if not set):
 
 ```bash
 export FACTORY_ACCOUNT="your-factory.testnet"
-export RESOLVER_ACCOUNT="your-resolver.testnet" 
+export RESOLVER_ACCOUNT="your-resolver.testnet"
 export MAKER_ACCOUNT="your-maker.testnet"
 export TAKER_ACCOUNT="your-taker.testnet"
 ```
@@ -39,9 +39,10 @@ cd packages/near-contracts/tests
 ```
 
 This script will:
-- Build all NEAR contracts
-- Deploy factory and resolver contracts to testnet
-- Set up escrow WASM code
+
+- Check pre-deployed contract status on testnet
+- Test factory and resolver contract functionality
+- Run escrow creation and interaction tests
 - Run comprehensive integration tests
 
 ### 3. Run Example Scripts
@@ -52,7 +53,7 @@ cd examples
 # Demonstrate NEAR → ETH swap flow
 node near-to-eth-swap.js
 
-# Demonstrate ETH → NEAR swap flow  
+# Demonstrate ETH → NEAR swap flow
 node eth-to-near-swap.js
 ```
 
@@ -80,6 +81,7 @@ Interactive demonstrations:
 ## 📊 Running Tests
 
 ### All Tests
+
 ```bash
 npm test
 # or
@@ -87,13 +89,15 @@ node integration-tests.js
 ```
 
 ### With Shell Script
+
 ```bash
 npm run test:testnet
-# or  
+# or
 ./run-testnet-tests.sh
 ```
 
 ### Individual Examples
+
 ```bash
 npm run near-to-eth
 npm run eth-to-near
@@ -101,12 +105,22 @@ npm run eth-to-near
 
 ## 🔧 Configuration
 
-Default testnet accounts (customize via environment variables):
+### Pre-deployed Contract Addresses
 
-- **Factory**: `escrow-factory.testnet` 
-- **Resolver**: `escrow-resolver.testnet`
-- **Maker**: `maker-test.testnet`
-- **Taker**: `taker-test.testnet`
+The following contracts are already deployed on NEAR testnet:
+
+- **Factory**: `1prime-global-factory-contract.testnet`
+- **Resolver**: `1prime-global-resolver-contract.testnet`
+- **Escrow Src Template**: `1prime-global-escrow-src-template.testnet`
+- **Escrow Dst Template**: `1prime-global-escrow-dst-template.testnet`
+- **Owner**: `1prime-global-owner.testnet`
+
+### Test Account Configuration
+
+Create your own test accounts (customize via environment variables):
+
+- **Maker**: `maker-test.testnet` (or set `MAKER_ACCOUNT`)
+- **Taker**: `taker-test.testnet` (or set `TAKER_ACCOUNT`)
 
 ## 📝 Test Output
 
@@ -117,6 +131,7 @@ Tests provide detailed colored output showing:
 - ⚠️ **SKIP**: Skipped operations (missing dependencies)
 
 Example output:
+
 ```
 🧪 NEAR Cross-Chain Escrow Integration Tests
 ═══════════════════════════════════════════
@@ -156,28 +171,32 @@ near view escrow-factory.testnet get_escrow_address \
 ## 🚨 Troubleshooting
 
 ### "Cannot connect to NEAR testnet"
+
 - Check internet connection
 - Verify testnet status at https://explorer.testnet.near.org
 
 ### "Account not found"
+
 1. Create accounts at https://wallet.testnet.near.org
 2. Fund with testnet NEAR at https://near-faucet.io/
 3. Verify account names match configuration
 
 ### "Contract not deployed"
+
 ```bash
 # Redeploy contracts
 ./run-testnet-tests.sh
 ```
 
 ### "Insufficient balance"
+
 - Get more testnet NEAR at https://near-faucet.io/
 - Check account balance: `near view-account your-account.testnet`
 
 ## 🔗 Resources
 
 - **Testnet Explorer**: https://explorer.testnet.near.org
-- **Testnet Wallet**: https://wallet.testnet.near.org  
+- **Testnet Wallet**: https://wallet.testnet.near.org
 - **Testnet Faucet**: https://near-faucet.io/
 - **NEAR CLI Docs**: https://docs.near.org/tools/near-cli
 - **Contract Documentation**: `../README.md`
@@ -195,7 +214,7 @@ near view escrow-factory.testnet get_escrow_address \
 The test suite monitors:
 
 - **Gas Usage**: Per-operation gas consumption
-- **Execution Time**: Contract deployment and call latency  
+- **Execution Time**: Contract deployment and call latency
 - **Success Rates**: Operation success/failure statistics
 - **State Size**: Contract storage utilization
 

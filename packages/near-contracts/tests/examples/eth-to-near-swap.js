@@ -6,14 +6,24 @@
 const { execSync } = require("child_process");
 const crypto = require("crypto");
 
-// Testnet configuration
+// Testnet configuration - using deployed contracts
 const config = {
   networkId: "testnet",
   nodeUrl: "https://rpc.testnet.near.org",
   walletUrl: "https://wallet.testnet.near.org",
   accounts: {
-    factory: process.env.FACTORY_ACCOUNT || "escrow-factory.testnet",
-    resolver: process.env.RESOLVER_ACCOUNT || "escrow-resolver.testnet",
+    factory:
+      process.env.FACTORY_ACCOUNT || "1prime-global-factory-contract.testnet",
+    resolver:
+      process.env.RESOLVER_ACCOUNT || "1prime-global-resolver-contract.testnet",
+    escrowSrcTemplate:
+      process.env.ESCROW_SRC_TEMPLATE ||
+      "1prime-global-escrow-src-template.testnet",
+    escrowDstTemplate:
+      process.env.ESCROW_DST_TEMPLATE ||
+      "1prime-global-escrow-dst-template.testnet",
+    owner: process.env.OWNER || "1prime-global-owner.testnet",
+    // Test accounts for making transactions
     maker: process.env.MAKER_ACCOUNT || "maker-test.testnet",
     taker: process.env.TAKER_ACCOUNT || "taker-test.testnet",
   },
@@ -43,12 +53,6 @@ async function runNearCommand(command) {
     const output = execSync(command, {
       stdio: "pipe",
       encoding: "utf8",
-      env: {
-        ...process.env,
-        NEAR_CLI_LOCALNET_NETWORK_ID: config.networkId,
-        NEAR_NODE_URL: config.nodeUrl,
-        NEAR_WALLET_URL: config.walletUrl,
-      },
     });
     return { success: true, output: output.trim() };
   } catch (error) {
@@ -135,9 +139,7 @@ async function main() {
       src_cancellation_timestamp: Math.floor(Date.now() / 1000) + 3600,
     })}' --accountId ${
       config.accounts.resolver
-    } --gas 300000000000000 --amount 5.1 --nodeUrl ${
-      config.nodeUrl
-    } --networkId ${config.networkId}`
+    } --gas 300000000000000 --amount 5.1 --networkId ${config.networkId}`
   );
 
   if (createDstResult.success) {
@@ -158,7 +160,7 @@ async function main() {
 
   // Get escrow address from factory
   const getAddressResult = await runNearCommand(
-    `near view ${config.accounts.factory} get_escrow_address '{"order_hash": "${ethOrderHash}"}' --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`
+    `near view ${config.accounts.factory} get_escrow_address '{"order_hash": "${ethOrderHash}"}' --networkId ${config.networkId}`
   );
 
   let escrowAddress;
@@ -174,7 +176,7 @@ async function main() {
   // Check escrow info
   if (escrowAddress) {
     const escrowInfoResult = await runNearCommand(
-      `near view ${escrowAddress} get_escrow_info --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`
+      `near view ${escrowAddress} get_escrow_info --networkId ${config.networkId}`
     );
 
     if (escrowInfoResult.success) {
@@ -219,7 +221,7 @@ async function main() {
   log("\n💡 To withdraw NEAR using the secret:", "blue");
   if (escrowAddress) {
     log(
-      `   near call ${escrowAddress} withdraw '{"secret": "${secret}"}' --accountId ${config.accounts.resolver} --gas 100000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`,
+      `   near call ${escrowAddress} withdraw '{"secret": "${secret}"}' --accountId ${config.accounts.resolver} --gas 100000000000000 --networkId ${config.networkId}`,
       "yellow"
     );
   }
@@ -227,7 +229,7 @@ async function main() {
   log("\n📝 Alternative public withdrawal (after public period):", "blue");
   if (escrowAddress) {
     log(
-      `   near call ${escrowAddress} public_withdraw '{"secret": "${secret}"}' --accountId ${config.accounts.maker} --gas 100000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`,
+      `   near call ${escrowAddress} public_withdraw '{"secret": "${secret}"}' --accountId ${config.accounts.maker} --gas 100000000000000 --networkId ${config.networkId}`,
       "yellow"
     );
   }
@@ -237,7 +239,7 @@ async function main() {
   log("⚠️  If swap fails, cancellation is possible after timeout:", "yellow");
   if (escrowAddress) {
     log(
-      `   near call ${escrowAddress} cancel --accountId ${config.accounts.resolver} --gas 100000000000000 --nodeUrl ${config.nodeUrl} --networkId ${config.networkId}`,
+      `   near call ${escrowAddress} cancel --accountId ${config.accounts.resolver} --gas 100000000000000 --networkId ${config.networkId}`,
       "yellow"
     );
   }
