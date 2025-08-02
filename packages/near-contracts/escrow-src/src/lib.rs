@@ -43,6 +43,15 @@ pub struct Timelocks {
     pub dst_cancellation: u32,
 }
 
+/// Arguments for creating new escrow instances
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
+#[serde(crate = "near_sdk::serde")]
+pub struct CreateEscrowArgs {
+    pub immutables: Immutables,
+    pub factory: AccountId,
+}
+
 /// Escrow state
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
@@ -82,10 +91,38 @@ pub struct EscrowSrc {
 
 #[near_bindgen]
 impl EscrowSrc {
+    /// Create a new escrow instance (template factory method)
+    #[payable]
+    pub fn create_escrow(
+        escrow_account: AccountId,
+        immutables: Immutables,
+        factory: AccountId,
+        wasm_code: Vec<u8>,
+    ) -> Promise {
+        // Create new escrow instance using provided WASM
+        Promise::new(escrow_account.clone())
+            .create_account()
+            .add_full_access_key(env::signer_account_pk())
+            .transfer(env::attached_deposit())
+            .deploy_contract(wasm_code)
+            .function_call(
+                "init".to_string(),
+                near_sdk::serde_json::to_vec(&CreateEscrowArgs {
+                    immutables,
+                    factory,
+                })
+                .unwrap(),
+                NearToken::from_yoctonear(0),
+                Gas::from_tgas(30),
+            )
+    }
+
     /// Initialize the escrow (called by factory during deployment)
     #[init]
     #[payable]
-    pub fn init(immutables: Immutables, factory: AccountId) -> Self {
+    pub fn init(args: CreateEscrowArgs) -> Self {
+        let immutables = args.immutables;
+        let factory = args.factory;
         assert_eq!(
             env::predecessor_account_id(),
             factory,
