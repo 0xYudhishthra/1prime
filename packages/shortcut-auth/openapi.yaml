@@ -25,7 +25,7 @@ info:
     name: MIT
 
 servers:
-  - url: https://your-api-domain.com
+  - url: https://shortcut-auth.tanweihup.workers.dev
     description: Production server
   - url: http://localhost:8787
     description: Development server
