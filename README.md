@@ -2,6 +2,9 @@
 
 <img width="200" alt="screenshot 1" src="./readme-logo.png" />
 
+> [!IMPORTANT]
+> Please see the [Demo video](https://www.loom.com/share/2a76a4c7956d4d5887d697016557a787?sid=db23e02a-2572-4820-8e18-d0a858a87727)
+
 **Secure Cross-Chain Atomic Swaps between EVM Chains and NEAR Protocol**
 
 1Prime Protocol enables trustless, atomic swaps between EVM-compatible blockchains (Ethereum, Base, BSC, Polygon, Arbitrum) and NEAR Protocol using a sophisticated relayer-resolver architecture built on 1inch Fusion+ technology.
