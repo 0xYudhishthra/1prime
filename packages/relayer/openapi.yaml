@@ -430,6 +430,13 @@ paths:
 
         The assigned resolver calls this endpoint after deploying source or destination escrows
         to update the order state and provide deployment details.
+
+        **On-Chain Verification**: This endpoint now performs comprehensive on-chain verification:
+        - Verifies the escrow contract exists at the provided address
+        - Confirms the contract was deployed at the specified transaction hash
+        - Validates block number matches the deployment
+        - Checks USDC token balance in the escrow (warns if insufficient)
+        - Uses native blockchain APIs and block explorers for verification
       operationId: confirmEscrowDeployment
       tags:
         - Resolvers
@@ -467,21 +474,54 @@ paths:
                   confirmed: true
                   orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   escrowType: "src"
-                  escrowAddress: "0x789..."
+                  escrowAddress: "0x789abcdef123456789abcdef123456789abcdef12"
+                  newPhase: "src_escrow_deployed"
+                  verification:
+                    contractExists: true
+                    deployedAtTxHash: true
+                    hasUsdcBalance: true
+                    usdcBalance: "1000000"
+                    verificationDetails:
+                      contractExists: true
+                      txHashMatches: true
+                      blockNumberMatches: true
+                      sufficientBalance: true
                 timestamp: 1640995200000
         "400":
-          $ref: "#/components/responses/BadRequest"
+          description: Bad request - verification failed or invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              examples:
+                validation_error:
+                  summary: Invalid request parameters
+                  value:
+                    success: false
+                    error: "Invalid request parameters"
+                    timestamp: 1640995200000
+                verification_failed:
+                  summary: On-chain verification failed
+                  value:
+                    success: false
+                    error: "Escrow contract verification failed: No contract found at address 0x789..., Failed to verify transaction hash: Transaction not found"
+                    timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
 
   /orders/{hash}/reveal-secret:
     post:
-      summary: Request Secret Reveal
+      summary: Submit Secret for Revelation
       description: |
-        Request revelation of order secret after escrow verification (Step 11 of the cross-chain flow).
+        Submit the secret value for order completion after escrow verification (Step 11 of the cross-chain flow).
 
         **IMPORTANT:** Frontend MUST call `/orders/{hash}/verify-escrows` first to ensure
         it's safe to reveal the secret. Revealing secrets to unsafe escrows results in loss of funds.
+
+        **Simple Flow:**
+        - If conditions are met to release the secret, submit the actual random number/secret
+        - The secret will be stored in the database for the resolver to pick up
+        - The resolver can then use this secret to complete the atomic swap
       operationId: requestSecretReveal
       tags:
         - Security
@@ -502,8 +542,6 @@ paths:
               $ref: "#/components/schemas/SecretRevealRequest"
             example:
               secret: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-              proof: "0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
-              signature: "0x7f6e5d4c3b2a1098765432abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
       responses:
         "200":
           description: Secret reveal processed successfully
@@ -726,19 +764,12 @@ components:
       type: object
       required:
         - secret
-        - proof
-        - signature
       properties:
         secret:
           type: string
-          description: Secret value for order completion
-        proof:
-          type: string
-          description: Merkle proof (for partial fills) or verification proof
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Requester's signature
+          description: |
+            Secret value for order completion (32-byte hex string).
+            This is the actual random number/secret that was used to generate the secretHash in the order.
 
   responses:
     BadRequest:
