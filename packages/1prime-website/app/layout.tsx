@@ -6,10 +6,13 @@ import { Navbar } from '@/components/Navbar';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: '1Prime - Cross-Chain Swaps via Voice',
+  title: '1Prime',
   description:
     'Cross-chain wallet with voice-controlled swaps using Apple Shortcuts',
   generator: 'v0.dev',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
@@ -20,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="icon" href="/favicon.ico" />
         <style>{`
 html {
   font-family: ${GeistSans.style.fontFamily};
