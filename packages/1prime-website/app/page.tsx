@@ -53,39 +53,38 @@ export default function HomePage() {
       </section>
 
       {/* Features */}
-      <section className="bg-gray-50 px-6 pt-12 pb-16">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-8 text-center text-3xl font-bold">Why 1Prime?</h2>
-          <div className="grid gap-8 md:grid-cols-3">
+      <section className="bg-gray-50 px-4 pt-6 pb-8">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="mb-4 text-center text-2xl font-bold">Why 1Prime?</h2>
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
-              <CardContent className="px-8 py-4 text-center">
-                <Smartphone className="mx-auto mb-4 h-12 w-12" />
-                <h3 className="mb-2 text-xl font-semibold">Voice-First UX</h3>
-                <p className="text-gray-600">
-                  Initiate cross-chain swaps using Siri. <br />
-                  No complex interfaces or manual transaction signing.
+              <CardContent className="px-4 py-2 text-center">
+                <Smartphone className="mx-auto mb-2 h-8 w-8" />
+                <h3 className="mb-1 text-base font-semibold">Voice-First UX</h3>
+                <p className="text-xs text-gray-600">
+                  Swap across chains with Siri.
+                  <br />
+                  No complex UI or manual signing.
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="px-8 py-4 text-center">
-                <Zap className="mx-auto mb-4 h-12 w-12" />
-                <h3 className="mb-2 text-xl font-semibold">
+              <CardContent className="px-4 py-2 text-center">
+                <Zap className="mx-auto mb-2 h-8 w-8" />
+                <h3 className="mb-1 text-base font-semibold">
                   Intent-Based Swaps
                 </h3>
-                <p className="text-gray-600">
-                  Powered by 1inch Fusion+ for atomic, MEV-protected cross-chain
-                  transactions.
+                <p className="text-xs text-gray-600">
+                  1inch Fusion+ powers atomic, MEV-protected swaps.
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="px-8 py-4 text-center">
-                <Globe className="mx-auto mb-4 h-12 w-12" />
-                <h3 className="mb-2 text-xl font-semibold">Multi-Chain</h3>
-                <p className="text-gray-600">
-                  Seamlessly swap between Ethereum, Arbitrum, Optimism, and NEAR
-                  protocol.
+              <CardContent className="px-4 py-2 text-center">
+                <Globe className="mx-auto mb-2 h-8 w-8" />
+                <h3 className="mb-1 text-base font-semibold">Multi-Chain</h3>
+                <p className="text-xs text-gray-600">
+                  Swap between Ethereum, Arbitrum, Optimism, and NEAR.
                 </p>
               </CardContent>
             </Card>
@@ -237,7 +236,17 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-gray-200 px-6 py-8">
         <div className="mx-auto max-w-6xl text-center text-gray-500">
-          <p className="italic">1Prime • Cross-Chain Swaps via Voice</p>
+          <p className="italic">
+            1Prime • Cross-Chain Swaps via Voice •{' '}
+            <a
+              href="https://github.com/0xYudhishthra/1prime"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-black"
+            >
+              GitHub
+            </a>
+          </p>
         </div>
       </footer>
     </div>
