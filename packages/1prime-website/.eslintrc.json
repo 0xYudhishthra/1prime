@@ -1,8 +1,6 @@
 {
   "root": true,
-  "extends": [
-    "next/core-web-vitals"
-  ],
+  "extends": ["next/core-web-vitals"],
   "rules": {
     // General rules
     "no-console": "off", // Allow console statements for debugging
@@ -19,7 +17,7 @@
     "comma-dangle": ["error", "always-multiline"],
     "object-curly-spacing": ["error", "always"],
     "array-bracket-spacing": ["error", "never"],
-    
+
     // React rules - be more lenient with unescaped entities
     "react/no-unescaped-entities": "off"
   },
@@ -37,4 +35,4 @@
     "*.config.js",
     "*.config.mjs"
   ]
-} 
+}

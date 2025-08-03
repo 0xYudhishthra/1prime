@@ -12,15 +12,18 @@ export default function HomePage() {
           <h1 className="mb-6 text-5xl font-bold">
             Cross-Chain Swaps via <span className="underline">Voice</span>
           </h1>
-          <p className="mx-auto mb-8 max-w-2xl text-xl text-gray-600">
+          <p className="text-l mx-auto max-w-2xl text-gray-600">
             Swap tokens between EVM chains and NEAR protocol using 1inch Fusion+
-            atomic swaps. Just say "Hey Siri, swap my tokens" and we handle the
-            rest.
+          </p>
+          <p className="text-l mx-auto mb-8 max-w-2xl text-gray-600">
+            Just say{' '}
+            <span className="font-semibold">"Hey Siri, swap my tokens"</span>{' '}
+            and we handle the rest.
           </p>
 
-          <div className="mb-12 flex flex-col justify-center gap-4 sm:flex-row">
+          <div className="mb-8 flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="https://www.icloud.com/shortcuts/32de106a6daa493bb778d071d798ff6b"
+              href="https://www.icloud.com/shortcuts/a0565a6171ac4ee7b2c0764cc27dfb36"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -35,14 +38,14 @@ export default function HomePage() {
             <Link href="/auth/signup">
               <Button size="lg" variant="outline">
                 Try Web App
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>
 
           <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
             <strong>Quick Start:</strong> Import the shortcut above, then say
-            <span className="mx-1 rounded bg-white px-2 py-1 font-mono">
+            <span className="mx-1 rounded bg-white px-1 py-1 font-mono font-bold">
               "Hey Siri, Login to 1Prime"
             </span>
           </div>
@@ -50,22 +53,22 @@ export default function HomePage() {
       </section>
 
       {/* Features */}
-      <section className="bg-gray-50 px-6 py-16">
+      <section className="bg-gray-50 px-6 pt-12 pb-16">
         <div className="mx-auto max-w-6xl">
-          <h2 className="mb-12 text-center text-3xl font-bold">Why 1Prime?</h2>
+          <h2 className="mb-8 text-center text-3xl font-bold">Why 1Prime?</h2>
           <div className="grid gap-8 md:grid-cols-3">
             <Card>
-              <CardContent className="p-6 text-center">
+              <CardContent className="px-8 py-4 text-center">
                 <Smartphone className="mx-auto mb-4 h-12 w-12" />
                 <h3 className="mb-2 text-xl font-semibold">Voice-First UX</h3>
                 <p className="text-gray-600">
-                  Initiate cross-chain swaps using Siri. No complex interfaces
-                  or manual transaction signing.
+                  Initiate cross-chain swaps using Siri. <br />
+                  No complex interfaces or manual transaction signing.
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-6 text-center">
+              <CardContent className="px-8 py-4 text-center">
                 <Zap className="mx-auto mb-4 h-12 w-12" />
                 <h3 className="mb-2 text-xl font-semibold">
                   Intent-Based Swaps
@@ -77,7 +80,7 @@ export default function HomePage() {
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-6 text-center">
+              <CardContent className="px-8 py-4 text-center">
                 <Globe className="mx-auto mb-4 h-12 w-12" />
                 <h3 className="mb-2 text-xl font-semibold">Multi-Chain</h3>
                 <p className="text-gray-600">
@@ -91,7 +94,7 @@ export default function HomePage() {
       </section>
 
       {/* Technical Flow */}
-      <section className="px-6 py-16">
+      {/* <section className="px-6 py-16">
         <div className="mx-auto max-w-4xl">
           <h2 className="mb-12 text-center text-3xl font-bold">
             How It Works Under The Hood
@@ -197,21 +200,17 @@ export default function HomePage() {
             ))}
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* CTA */}
-      <section className="bg-black px-6 py-16 text-white">
+      <section className="bg-black px-6 py-12 text-white">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="mb-4 text-3xl font-bold">
-            Ready to Try Cross-Chain Voice Swaps?
+          <h2 className="mb-4 text-2xl font-bold">
+            Ready to try Cross-Chain Swaps via Voice?
           </h2>
-          <p className="mb-8 text-gray-300">
-            This is a proof-of-concept demonstrating intent-based atomic swaps
-            between EVM chains and NEAR.
-          </p>
           <div className="flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="https://www.icloud.com/shortcuts/32de106a6daa493bb778d071d798ff6b"
+              href="https://www.icloud.com/shortcuts/a0565a6171ac4ee7b2c0764cc27dfb36"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -238,7 +237,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-gray-200 px-6 py-8">
         <div className="mx-auto max-w-6xl text-center text-gray-500">
-          <p>1Prime - Cross-Chain Swaps via Voice • Proof of Concept</p>
+          <p className="italic">1Prime • Cross-Chain Swaps via Voice</p>
         </div>
       </footer>
     </div>
