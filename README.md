@@ -1,6 +1,6 @@
 # 1Prime Protocol
 
-![1Prime Logo](packages/1prime-website/public/logo.png)
+<img width="200" alt="screenshot 1" src="./readme-logo.png" />
 
 **Secure Cross-Chain Atomic Swaps between EVM Chains and NEAR Protocol**
 
@@ -189,6 +189,7 @@ NEXT_PUBLIC_CHAIN_ENV=testnet
 
 - [**Relayer REST API**](./packages/relayer/openapi.yaml) - Complete OpenAPI specification
 - [**WebSocket Events**](./packages/relayer/docs/websocket.md) - Real-time update documentation
+- [**Apple Shortcuts API**](./packages/shortcut-auth/openapi.yaml) - iOS Shortcuts integration
 
 ## Supported Networks
 
