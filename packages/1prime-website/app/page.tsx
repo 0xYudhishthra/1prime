@@ -23,7 +23,7 @@ export default function HomePage() {
 
           <div className="mb-8 flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="https://www.icloud.com/shortcuts/a0565a6171ac4ee7b2c0764cc27dfb36"
+              href="https://www.icloud.com/shortcuts/70defed281024a5b9ba729f9594e386c"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -209,7 +209,7 @@ export default function HomePage() {
           </h2>
           <div className="flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="https://www.icloud.com/shortcuts/a0565a6171ac4ee7b2c0764cc27dfb36"
+              href="https://www.icloud.com/shortcuts/70defed281024a5b9ba729f9594e386c"
               target="_blank"
               rel="noopener noreferrer"
             >
