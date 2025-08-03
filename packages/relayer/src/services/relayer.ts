@@ -25,6 +25,32 @@ import {
   getEscrowFactoryAddress,
   getChainNameFromChainId,
 } from "../config/chains";
+import { getTokenAddress, isTokenSupportedOnChain } from "../config/tokens";
+
+// Helper function to determine if a chain is EVM-based
+function isEvmChain(chainId: string): boolean {
+  const evmChains = [
+    "ethereum",
+    "eth-sepolia",
+    "base",
+    "bsc",
+    "polygon",
+    "arbitrum",
+    "11155111",
+    "1",
+    "8453",
+    "56",
+    "137",
+    "42161",
+  ];
+  return evmChains.includes(chainId.toLowerCase());
+}
+
+// Helper function to determine if a chain is NEAR-based
+function isNearChain(chainId: string): boolean {
+  const nearChains = ["near", "near-testnet", "397", "398"];
+  return nearChains.includes(chainId.toLowerCase());
+}
 import { DatabaseService } from "./database";
 import { OneInchApiService } from "./1inch-api";
 import { SDKOrderMapper } from "../utils/sdk-mapper";
@@ -65,6 +91,10 @@ export class RelayerService extends EventEmitter {
   private secretManager: SecretManager;
   private timelockManager: TimelockManager;
   private webSocketService?: any; // Optional WebSocket service
+
+  // NEAR address mapping for SDK compatibility
+  private nearAddressMapping: Map<string, string> = new Map(); // placeholder -> original NEAR address
+  private reverseNearMapping: Map<string, string> = new Map(); // original NEAR -> placeholder
 
   private isInitialized = false;
   private healthCheckInterval?: NodeJS.Timeout;
@@ -114,6 +144,118 @@ export class RelayerService extends EventEmitter {
   // Getter for database service (for debugging purposes)
   get dbService() {
     return this.databaseService;
+  }
+
+  /**
+   * Check if an address is a NEAR address format
+   */
+  private isNearAddress(address: string): boolean {
+    // NEAR addresses can be:
+    // 1. Named accounts: ending with .near or .testnet
+    // 2. Implicit accounts: 64-character hex strings
+    return (
+      address.includes(".near") ||
+      address.includes(".testnet") ||
+      (address.length === 64 && /^[0-9a-fA-F]+$/.test(address))
+    );
+  }
+
+  /**
+   * Generate a random EVM address as placeholder for NEAR addresses
+   */
+  private generateEvmPlaceholder(): string {
+    // Generate 20 random bytes and convert to hex
+    const randomBytes = new Uint8Array(20);
+    crypto.getRandomValues(randomBytes);
+    return (
+      "0x" +
+      Array.from(randomBytes)
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("")
+    );
+  }
+
+  /**
+   * Convert NEAR address to EVM placeholder, maintaining bidirectional mapping
+   */
+  private convertNearToEvmPlaceholder(nearAddress: string): string {
+    // Check if we already have a mapping for this NEAR address
+    const existingPlaceholder = this.reverseNearMapping.get(nearAddress);
+    if (existingPlaceholder) {
+      return existingPlaceholder;
+    }
+
+    // Generate new placeholder
+    let placeholder = this.generateEvmPlaceholder();
+
+    // Ensure uniqueness (very unlikely collision, but just in case)
+    while (this.nearAddressMapping.has(placeholder)) {
+      placeholder = this.generateEvmPlaceholder();
+    }
+
+    // Store bidirectional mapping
+    this.nearAddressMapping.set(placeholder, nearAddress);
+    this.reverseNearMapping.set(nearAddress, placeholder);
+
+    this.logger.debug("Generated EVM placeholder for NEAR address", {
+      originalNear: nearAddress,
+      evmPlaceholder: placeholder,
+    });
+
+    return placeholder;
+  }
+
+  /**
+   * Get original NEAR address from EVM placeholder
+   */
+  private getOriginalNearAddress(evmPlaceholder: string): string | null {
+    return this.nearAddressMapping.get(evmPlaceholder) || null;
+  }
+
+  /**
+   * Process address: convert NEAR to EVM placeholder if needed
+   */
+  private processAddress(address: string): string {
+    if (this.isNearAddress(address)) {
+      return this.convertNearToEvmPlaceholder(address);
+    }
+    return address;
+  }
+
+  /**
+   * Get address mappings for an order (useful for resolvers)
+   */
+  async getAddressMappings(orderHash: string): Promise<{
+    originalAddresses?: any;
+    processedAddresses?: any;
+    nearAddressMappings?: Record<string, string>;
+  } | null> {
+    try {
+      const orderRecord = await this.databaseService.getOrder(orderHash);
+      if (!orderRecord) {
+        return null;
+      }
+
+      const extendedRecord = orderRecord as FusionOrderExtended;
+      return {
+        originalAddresses: extendedRecord.originalAddresses,
+        processedAddresses: extendedRecord.processedAddresses,
+        nearAddressMappings: extendedRecord.nearAddressMappings,
+      };
+    } catch (error) {
+      this.logger.error("Failed to get address mappings", {
+        error: (error as Error).message,
+        orderHash,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Resolve EVM placeholder to original NEAR address
+   */
+  resolveNearAddress(evmPlaceholder: string): string | null {
+    return this.getOriginalNearAddress(evmPlaceholder);
   }
 
   async initialize(): Promise<void> {
@@ -232,56 +374,169 @@ export class RelayerService extends EventEmitter {
 
       console.log("escrowFactoryAddress", escrowFactoryAddress);
 
+      // Validate token support on respective chains
+      if (!isTokenSupportedOnChain(params.fromToken, srcChainId)) {
+        throw new Error(
+          `Token '${params.fromToken}' not supported on chain '${srcChainId}'`
+        );
+      }
+      if (!isTokenSupportedOnChain(params.toToken, dstChainId)) {
+        throw new Error(
+          `Token '${params.toToken}' not supported on chain '${dstChainId}'`
+        );
+      }
+
+      // Resolve token addresses based on chain
+      const sourceTokenAddress = getTokenAddress(params.fromToken, srcChainId);
+      const destinationTokenAddress = getTokenAddress(
+        params.toToken,
+        dstChainId
+      );
+
+      // Process addresses: convert NEAR addresses to EVM placeholders for SDK compatibility
+      const processedUserSrcAddress = this.processAddress(
+        params.userSrcAddress
+      );
+      const processedUserDstAddress = this.processAddress(
+        params.userDstAddress
+      );
+      const processedFromToken = this.processAddress(sourceTokenAddress);
+      const processedToToken = this.processAddress(destinationTokenAddress);
+      const processedEscrowFactory = this.processAddress(escrowFactoryAddress);
+
+      this.logger.debug("Address and token processing completed", {
+        originalUserSrcAddress: params.userSrcAddress,
+        processedUserSrcAddress,
+        originalUserDstAddress: params.userDstAddress,
+        processedUserDstAddress,
+        fromTokenSymbol: params.fromToken,
+        sourceTokenAddress,
+        processedFromToken,
+        toTokenSymbol: params.toToken,
+        destinationTokenAddress,
+        processedToToken,
+        originalEscrowFactory: escrowFactoryAddress,
+        processedEscrowFactory,
+      });
+
       // Create hash lock from the provided hash
       const hashLock = HashLock.fromString(params.secretHash);
 
-      const order = CrossChainOrder.new(
-        new Address(escrowFactoryAddress),
-        {
-          salt: randBigInt(1000n),
-          maker: params.userAddress,
-          makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
-          takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
-          makerAsset: new Address(params.fromToken),
-          takerAsset: new Address(params.toToken),
-        },
-        {
-          hashLock,
-          timeLocks: TimeLocks.new({
-            srcWithdrawal: 300n, // 5 minutes finality lock
-            srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
-            srcCancellation: 1800n, // 30 minutes cancellation
-            srcPublicCancellation: 3600n, // 1 hour public cancellation
-            dstWithdrawal: 300n, // 5 minutes finality lock
-            dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
-            dstCancellation: 1800n, // 30 minutes cancellation
-          }),
-          srcChainId: srcChain,
-          dstChainId: dstChain,
-          srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
-          dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
-        },
-        {
-          auction: new AuctionDetails({
-            initialRateBump: 1000, // 10% initial rate bump
-            points: [], // Custom auction curve points (empty for default)
-            duration: 120n, // 2 minutes auction duration
-            startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
-          }),
-          whitelist: [
-            {
-              address: new Address(escrowFactoryAddress),
-              allowFrom: 0n,
-            },
-          ],
-          resolvingStartTime: 0n, // Immediate resolving
-        },
-        {
-          nonce: randBigInt(UINT_40_MAX),
-          allowPartialFills: false, // Single fill for now
-          allowMultipleFills: false, // Single fill for now
-        }
-      );
+      // Determine which SDK method to use based on chain types
+      const srcIsEvm = isEvmChain(srcChainId);
+      const dstIsNear = isNearChain(dstChainId);
+
+      this.logger.info("Chain type detection", {
+        srcChainId,
+        dstChainId,
+        srcIsEvm,
+        dstIsNear,
+        sdkMethod:
+          srcIsEvm && dstIsNear
+            ? "CrossChainOrder.new"
+            : "CrossChainOrder.new_near",
+      });
+
+      let order;
+
+      if (srcIsEvm && dstIsNear) {
+        // EVM to NEAR: use standard CrossChainOrder.new
+        order = CrossChainOrder.new(
+          new Address(processedEscrowFactory),
+          {
+            salt: randBigInt(1000n),
+            maker: new Address(processedUserSrcAddress),
+            makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
+            takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
+            makerAsset: new Address(processedFromToken),
+            takerAsset: new Address(processedToToken),
+          },
+          {
+            hashLock,
+            timeLocks: TimeLocks.new({
+              srcWithdrawal: 300n, // 5 minutes finality lock
+              srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              srcCancellation: 1800n, // 30 minutes cancellation
+              srcPublicCancellation: 3600n, // 1 hour public cancellation
+              dstWithdrawal: 300n, // 5 minutes finality lock
+              dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              dstCancellation: 1800n, // 30 minutes cancellation
+            }),
+            srcChainId: srcChain,
+            dstChainId: dstChain,
+            srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+            dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+          },
+          {
+            auction: new AuctionDetails({
+              initialRateBump: 1000, // 10% initial rate bump
+              points: [], // Custom auction curve points (empty for default)
+              duration: 120n, // 2 minutes auction duration
+              startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
+            }),
+            whitelist: [
+              {
+                address: new Address(processedEscrowFactory),
+                allowFrom: 0n,
+              },
+            ],
+            resolvingStartTime: 0n, // Immediate resolving
+          },
+          {
+            nonce: randBigInt(UINT_40_MAX),
+            allowPartialFills: false, // Single fill for now
+            allowMultipleFills: false, // Single fill for now
+          }
+        );
+      } else {
+        // All other cases (NEAR to EVM, NEAR to NEAR, etc.): use CrossChainOrder.new_near
+        order = CrossChainOrder.new_near(
+          {
+            salt: randBigInt(1000n),
+            maker: new Address(processedUserSrcAddress),
+            makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
+            takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
+            makerAsset: new Address(processedFromToken),
+            takerAsset: new Address(processedToToken),
+          },
+          {
+            hashLock,
+            timeLocks: TimeLocks.new({
+              srcWithdrawal: 300n, // 5 minutes finality lock
+              srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              srcCancellation: 1800n, // 30 minutes cancellation
+              srcPublicCancellation: 3600n, // 1 hour public cancellation
+              dstWithdrawal: 300n, // 5 minutes finality lock
+              dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              dstCancellation: 1800n, // 30 minutes cancellation
+            }),
+            srcChainId: srcChain,
+            dstChainId: dstChain,
+            srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+            dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+          },
+          {
+            auction: new AuctionDetails({
+              initialRateBump: 1000, // 10% initial rate bump
+              points: [], // Custom auction curve points (empty for default)
+              duration: 120n, // 2 minutes auction duration
+              startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
+            }),
+            whitelist: [
+              {
+                address: new Address(processedEscrowFactory),
+                allowFrom: 0n,
+              },
+            ],
+            resolvingStartTime: 0n, // Immediate resolving
+          },
+          {
+            nonce: randBigInt(UINT_40_MAX),
+            allowPartialFills: false, // Single fill for now
+            allowMultipleFills: false, // Single fill for now
+          }
+        );
+      }
 
       console.log("order", order);
 
@@ -290,9 +545,14 @@ export class RelayerService extends EventEmitter {
 
       this.logger.info("Fusion order generated using SDK", {
         orderHash,
-        userAddress: params.userAddress,
+        userSrcAddress: params.userSrcAddress,
+        userDstAddress: params.userDstAddress,
         fromChain: params.fromChain,
         toChain: params.toChain,
+        fromTokenSymbol: params.fromToken,
+        toTokenSymbol: params.toToken,
+        sourceTokenAddress,
+        destinationTokenAddress,
         srcChainName: this.getChainNameFromId(Number(srcChainId)),
         dstChainName: this.getChainNameFromId(Number(dstChainId)),
         srcChainId,
@@ -301,17 +561,36 @@ export class RelayerService extends EventEmitter {
         takingAmount: order.takingAmount.toString(),
       });
 
-      // Store the prepared order in database with full details
+      // Store the prepared order in database with full details including address mappings
       const orderDetails = {
-        userAddress: params.userAddress,
+        userSrcAddress: params.userSrcAddress,
+        userDstAddress: params.userDstAddress,
         amount: params.amount,
-        fromToken: params.fromToken,
-        toToken: params.toToken,
+        fromTokenSymbol: params.fromToken,
+        toTokenSymbol: params.toToken,
         fromChain: params.fromChain,
         toChain: params.toChain,
         secretHash: params.secretHash,
         srcChainId,
         dstChainId,
+        // Store original addresses and resolved token addresses
+        originalAddresses: {
+          userSrcAddress: params.userSrcAddress,
+          userDstAddress: params.userDstAddress,
+          sourceTokenAddress,
+          destinationTokenAddress,
+          escrowFactory: escrowFactoryAddress,
+        },
+        // Store processed addresses used in SDK
+        processedAddresses: {
+          userSrcAddress: processedUserSrcAddress,
+          userDstAddress: processedUserDstAddress,
+          fromToken: processedFromToken,
+          toToken: processedToToken,
+          escrowFactory: processedEscrowFactory,
+        },
+        // Store address mappings for lookup
+        nearAddressMappings: Object.fromEntries(this.nearAddressMapping),
       };
 
       await this.databaseService.storePreparedOrder(
@@ -322,7 +601,10 @@ export class RelayerService extends EventEmitter {
 
       this.logger.info("Order prepared and stored", {
         orderHash,
-        userAddress: params.userAddress,
+        userSrcAddress: params.userSrcAddress,
+        userDstAddress: params.userDstAddress,
+        fromTokenSymbol: params.fromToken,
+        toTokenSymbol: params.toToken,
       });
 
       // Only return orderHash - full order details are stored in DB
@@ -444,14 +726,54 @@ export class RelayerService extends EventEmitter {
       Number(orderDetails.dstChainId)
     );
 
+    // Use original addresses if available (for NEAR compatibility), otherwise fall back to processed/SDK values
+    const originalAddresses = orderDetails.originalAddresses || {};
+    const processedAddresses = orderDetails.processedAddresses || {};
+
+    // Restore address mappings from database
+    if (orderDetails.nearAddressMappings) {
+      for (const [placeholder, originalNear] of Object.entries(
+        orderDetails.nearAddressMappings
+      )) {
+        this.nearAddressMapping.set(
+          placeholder as string,
+          originalNear as string
+        );
+        this.reverseNearMapping.set(
+          originalNear as string,
+          placeholder as string
+        );
+      }
+    }
+
     return {
-      // Basic order fields
+      // Basic order fields - use original addresses for final execution
       orderHash,
-      maker: innerOrder.maker?.val || orderDetails.userAddress,
+      maker:
+        originalAddresses.userSrcAddress ||
+        originalAddresses.userAddress ||
+        innerOrder.maker?.val ||
+        orderDetails.userSrcAddress ||
+        orderDetails.userAddress,
+      userSrcAddress:
+        originalAddresses.userSrcAddress ||
+        originalAddresses.userAddress ||
+        orderDetails.userSrcAddress ||
+        orderDetails.userAddress,
+      userDstAddress:
+        originalAddresses.userDstAddress ||
+        orderDetails.userDstAddress ||
+        orderDetails.userAddress, // Fallback to same address if not specified
       sourceChain,
       destinationChain,
-      sourceToken: innerOrder.makerAsset?.val || orderDetails.fromToken,
-      destinationToken: innerOrder.takerAsset?.val || orderDetails.toToken,
+      sourceToken:
+        originalAddresses.fromToken ||
+        innerOrder.makerAsset?.val ||
+        orderDetails.fromToken,
+      destinationToken:
+        originalAddresses.toToken ||
+        innerOrder.takerAsset?.val ||
+        orderDetails.toToken,
       sourceAmount: innerOrder.makingAmount || orderDetails.amount,
       destinationAmount: innerOrder.takingAmount || orderDetails.amount,
       secretHash:
@@ -472,10 +794,11 @@ export class RelayerService extends EventEmitter {
 
       // Extract timelock values from SDK order
       detailedTimeLocks: this.extractTimeLocks(fusionExtension),
-      // Simplified auction details - hardcoded price, no dutch auction
-      // enhancedAuctionDetails: {
-      //   points: [], // Empty - no price curve
-      // },
+
+      // Store both original and processed addresses for reference
+      originalAddresses,
+      processedAddresses,
+      nearAddressMappings: orderDetails.nearAddressMappings,
 
       // Order state management
       phase: "submitted",
@@ -1859,6 +2182,8 @@ export class RelayerService extends EventEmitter {
       const fusionOrders: FusionOrder[] = activeOrderRecords.map(record => ({
         orderHash: record.orderHash,
         maker: record.maker,
+        userSrcAddress: record.userSrcAddress || record.maker, // Fallback to maker for backward compatibility
+        userDstAddress: record.userDstAddress || record.maker, // Fallback to maker for backward compatibility
         sourceChain: record.sourceChain,
         destinationChain: record.destinationChain,
         sourceToken: record.sourceToken,
@@ -1921,6 +2246,8 @@ export class RelayerService extends EventEmitter {
           const fusionOrder: FusionOrder = {
             orderHash: order.orderHash,
             maker: order.maker,
+            userSrcAddress: order.userSrcAddress || order.maker, // Fallback to maker for backward compatibility
+            userDstAddress: order.userDstAddress || order.maker, // Fallback to maker for backward compatibility
             sourceChain: order.sourceChain,
             destinationChain: order.destinationChain,
             sourceToken: order.sourceToken,

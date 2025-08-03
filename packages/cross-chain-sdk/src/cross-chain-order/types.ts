@@ -38,9 +38,7 @@ export function isNearAddress(
 /**
  * Utility type guard to check if an address is an EVM address
  */
-export function isEvmAddress(
-    address: CrossChainAddress
-): address is EvmAddress {
+export function isEvmAddress(address: Address): address is EvmAddress {
     return !isNearAddress(address)
 }
 
@@ -48,11 +46,11 @@ export type CrossChainOrderInfo = {
     /**
      * Source chain asset - supports both EVM and NEAR address formats
      */
-    makerAsset: CrossChainAddress
+    makerAsset: Address
     /**
      * Destination chain asset - supports both EVM and NEAR address formats
      */
-    takerAsset: CrossChainAddress
+    takerAsset: Address
     /**
      * Source chain amount
      */
@@ -64,14 +62,14 @@ export type CrossChainOrderInfo = {
     /**
      * Maker address - supports both EVM and NEAR address formats
      */
-    maker: CrossChainAddress
+    maker: Address
     salt?: bigint
     /**
      * Destination chain receiver address - supports both EVM and NEAR address formats
      *
      * If not set, then `maker` used
      */
-    receiver?: CrossChainAddress
+    receiver?: Address
 }
 
 export type Extra = {

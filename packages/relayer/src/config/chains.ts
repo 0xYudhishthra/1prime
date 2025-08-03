@@ -77,6 +77,7 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     chainId: "mainnet",
     name: "NEAR Protocol",
     rpcUrl: process.env.NEAR_RPC_URL || "https://rpc.mainnet.near.org",
+    escrowFactoryAddress: "0x0000000000000000000000000000000000000000",
   } as ChainConfig,
 
   // Ethereum Sepolia Testnet
@@ -94,7 +95,7 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     chainId: "398",
     name: "NEAR Testnet",
     rpcUrl: process.env.NEAR_TESTNET_RPC_URL || "https://rpc.testnet.near.org",
-    escrowFactoryAddress: "1prime-global-factory-contract.testnet",
+    escrowFactoryAddress: "0x0000000000000000000000000000000000000000",
   } as ChainConfig,
 };
 

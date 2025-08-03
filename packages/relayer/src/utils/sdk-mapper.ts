@@ -26,6 +26,8 @@ export class SDKOrderMapper {
     const baseFusionOrder: FusionOrder = {
       orderHash,
       maker: limitOrder.maker.val,
+      userSrcAddress: limitOrder.maker.val, // Default to maker for SDK orders
+      userDstAddress: limitOrder.receiver?.val || limitOrder.maker.val, // Use receiver if available, fallback to maker
       sourceChain,
       destinationChain,
       sourceToken: limitOrder.makerAsset.val,

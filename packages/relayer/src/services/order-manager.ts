@@ -46,6 +46,8 @@ export class OrderManager extends EventEmitter {
       const baseFusionOrder: FusionOrder = {
         orderHash: fusionOrder.orderHash,
         maker: fusionOrder.maker,
+        userSrcAddress: fusionOrder.userSrcAddress,
+        userDstAddress: fusionOrder.userDstAddress,
         sourceChain: fusionOrder.sourceChain,
         destinationChain: fusionOrder.destinationChain,
         sourceToken: fusionOrder.sourceToken,

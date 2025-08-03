@@ -16,10 +16,12 @@ export interface ChainConfig {
 export interface FusionOrder {
   orderHash: string;
   maker: string;
+  userSrcAddress: string; // User address on source chain
+  userDstAddress: string; // User address on destination chain
   sourceChain: string;
   destinationChain: string;
-  sourceToken: string;
-  destinationToken: string;
+  sourceToken: string; // Resolved token address on source chain
+  destinationToken: string; // Resolved token address on destination chain
   sourceAmount: string;
   destinationAmount: string;
   secretHash: string;
@@ -182,10 +184,11 @@ export interface ApiResponse<T = any> {
 }
 
 export interface GenerateOrderRequest {
-  userAddress: string;
+  userSrcAddress: string; // User address on source chain
+  userDstAddress: string; // User address on destination chain  
   amount: string;
-  fromToken: string;
-  toToken: string;
+  fromToken: string; // Token symbol (e.g., "usdc", "eth")
+  toToken: string;   // Token symbol (e.g., "usdc", "eth")
   fromChain: string;
   toChain: string;
   secretHash: string; // Previously generated secret hash from frontend
@@ -343,6 +346,21 @@ export interface FusionOrderExtended extends FusionOrder {
   // Deployment timestamps (CRITICAL for timelock calculation)
   sourceEscrowDeployedAt?: number; // When source escrow deployed (E1)
   destinationEscrowDeployedAt?: number; // When destination escrow deployed (E2)
+
+  // NEAR address compatibility fields
+  originalAddresses?: {
+    userAddress: string;
+    fromToken: string;
+    toToken: string;
+    escrowFactory: string;
+  };
+  processedAddresses?: {
+    userAddress: string;
+    fromToken: string;
+    toToken: string;
+    escrowFactory: string;
+  };
+  nearAddressMappings?: Record<string, string>; // EVM placeholder -> original NEAR address
 }
 
 // Timelock phase info (calculated from deployment time + timeLocks)

@@ -48,10 +48,11 @@ const secretRevealSchema = Joi.object({
 });
 
 const generateOrderSchema = Joi.object({
-  userAddress: Joi.string().required(),
+  userSrcAddress: Joi.string().required(),
+  userDstAddress: Joi.string().required(),
   amount: Joi.string().required(),
-  fromToken: Joi.string().required(),
-  toToken: Joi.string().required(),
+  fromToken: Joi.string().required(), // Token symbol (e.g., "usdc", "eth")
+  toToken: Joi.string().required(), // Token symbol (e.g., "usdc", "eth")
   fromChain: Joi.string().required(),
   toChain: Joi.string().required(),
   secretHash: Joi.string().required(),
@@ -216,7 +217,8 @@ export function createRelayerRoutes(
 
         logger.info("Order details generated via API", {
           orderHash: result.orderHash,
-          userAddress: generateOrderRequest.userAddress,
+          userSrcAddress: generateOrderRequest.userSrcAddress,
+          userDstAddress: generateOrderRequest.userDstAddress,
           fromChain: generateOrderRequest.fromChain,
           toChain: generateOrderRequest.toChain,
         });
@@ -301,6 +303,49 @@ export function createRelayerRoutes(
         logger.error("API: Failed to get order status", {
           error: (error as Error).message,
           orderHash,
+        });
+        return res
+          .status(500)
+          .json(createResponse(false, undefined, "Internal server error"));
+      }
+    })
+  );
+
+  // Get address mappings for an order (useful for NEAR resolvers)
+  router.get(
+    "/orders/:hash/address-mappings",
+    asyncHandler(async (req: Request, res: Response) => {
+      const { hash } = req.params;
+
+      // Validate order hash format
+      if (!isValidHash(hash)) {
+        return res
+          .status(400)
+          .json(createResponse(false, undefined, "Invalid order hash format"));
+      }
+
+      try {
+        const mappings = await relayerService.getAddressMappings(hash);
+
+        if (!mappings) {
+          return res
+            .status(404)
+            .json(createResponse(false, undefined, "Order not found"));
+        }
+
+        logger.info("Retrieved address mappings", {
+          orderHash: hash,
+          hasOriginalAddresses: !!mappings.originalAddresses,
+          hasProcessedAddresses: !!mappings.processedAddresses,
+          nearMappingCount: Object.keys(mappings.nearAddressMappings || {})
+            .length,
+        });
+
+        return res.json(createResponse(true, mappings));
+      } catch (error) {
+        logger.error("API: Failed to get address mappings", {
+          error: (error as Error).message,
+          orderHash: hash,
         });
         return res
           .status(500)

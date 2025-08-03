@@ -67,6 +67,8 @@ export class DatabaseService {
         // Use exact column names from schema (quoted in SQL, camelCase in JS)
         orderHash: order.orderHash,
         maker: order.maker || "",
+        userSrcAddress: order.userSrcAddress || "",
+        userDstAddress: order.userDstAddress || "",
         sourceChain: order.sourceChain || "",
         destinationChain: order.destinationChain || "",
         sourceToken: order.sourceToken || "",
@@ -88,6 +90,11 @@ export class DatabaseService {
         // Store complex objects in appropriate JSONB columns
         detailedTimeLocks: (order as any).detailedTimeLocks || null,
         enhancedAuctionDetails: (order as any).enhancedAuctionDetails || null,
+
+        // NEAR address compatibility fields
+        originalAddresses: (order as any).originalAddresses || null,
+        processedAddresses: (order as any).processedAddresses || null,
+        nearAddressMappings: (order as any).nearAddressMappings || null,
 
         // Standard tracking fields
         status: "pending",
