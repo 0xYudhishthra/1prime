@@ -14,6 +14,9 @@
     "test:all": "pnpm -r test",
     "lint:all": "pnpm -r lint",
     "format:all": "pnpm -r format",
+    "setup:env": "cp packages/relayer/env.example packages/relayer/.env && echo 'Environment file created at packages/relayer/.env - please update with your values'",
+    "setup:db": "echo 'Database setup: Import packages/relayer/supabase-schema.sql into your Supabase project'",
+    "setup": "pnpm install && pnpm setup:env",
     "clean": "pnpm -r clean && rm -rf node_modules",
     "install:all": "pnpm install"
   },

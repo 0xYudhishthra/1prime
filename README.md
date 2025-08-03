@@ -135,8 +135,8 @@ The following diagram illustrates the complete flow of a cross-chain atomic swap
 git clone https://github.com/unite-defi/1prime-protocol.git
 cd 1prime-protocol
 
-# Install dependencies
-pnpm install:all
+# Quick setup (installs dependencies and copies environment files)
+pnpm setup
 
 # Build all packages
 pnpm build:all
@@ -148,18 +148,13 @@ pnpm build:all
 # Start the relayer service
 pnpm dev:relayer
 
-# In another terminal, start the frontend
-cd packages/1prime-website
-pnpm dev
-
-# In another terminal, start the resolver
-cd packages/resolver
-pnpm dev
+# For production deployment
+pnpm start:relayer
 ```
 
 ### Environment Configuration
 
-Create `.env` files in each package directory:
+The `pnpm setup` command automatically copies environment template files. Update them with your values:
 
 #### Relayer Configuration (`packages/relayer/.env`)
 
@@ -220,25 +215,30 @@ NEXT_PUBLIC_CHAIN_ENV=testnet
 ## Scripts
 
 ```bash
+# Quick Setup
+pnpm setup               # Install dependencies and copy environment files
+pnpm setup:env           # Copy relayer .env.example to .env
+pnpm setup:db            # Database setup instructions
+
 # Development
-pnpm dev:relayer          # Start relayer in development mode
-pnpm dev:website          # Start frontend development server
+pnpm dev:relayer         # Start relayer in development mode
+pnpm start:relayer       # Start relayer in production mode
 
 # Building
-pnpm build:all            # Build all packages
-pnpm build:relayer        # Build relayer service only
+pnpm build:all           # Build all packages
+pnpm build:relayer       # Build relayer service only
 pnpm build:cross-chain-sdk # Build SDK only
 
 # Testing
-pnpm test:all             # Run all tests
-pnpm test:relayer         # Test relayer service only
+pnpm test:all            # Run all tests
+pnpm test:relayer        # Test relayer service only
 
 # Linting & Formatting
-pnpm lint:all             # Lint all packages
-pnpm format:all           # Format all code
+pnpm lint:all            # Lint all packages
+pnpm format:all          # Format all code
 
 # Cleanup
-pnpm clean                # Remove all node_modules and build artifacts
+pnpm clean               # Remove all node_modules and build artifacts
 ```
 
 ## Contributing
