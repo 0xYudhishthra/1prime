@@ -14,11 +14,12 @@ info:
     - Modular chain support for EVM and NEAR
 
     ## Supported Chain Pairs
-    - Ethereum ↔ NEAR
-    - Base ↔ NEAR
-    - BSC ↔ NEAR
-    - Polygon ↔ NEAR
-    - Arbitrum ↔ NEAR
+    - Ethereum (1) ↔ NEAR (398)
+    - Base (8453) ↔ NEAR (398)
+    - BSC (56) ↔ NEAR (398)
+    - Polygon (137) ↔ NEAR (398)
+    - Arbitrum (42161) ↔ NEAR (398)
+    - Sepolia (11155111) ↔ NEAR Testnet (398)
   version: 1.0.0
   contact:
     name: 1Prime Team
@@ -99,6 +100,14 @@ paths:
                   supportedChains:
                     evm: ["ethereum", "base", "bsc", "polygon", "arbitrum"]
                     near: ["near", "near-testnet"]
+                  chainMappings:
+                    "ethereum": "Ethereum Mainnet"
+                    "base": "Base"
+                    "bsc": "BNB Smart Chain" 
+                    "polygon": "Polygon"
+                    "arbitrum": "Arbitrum One"
+                    "near": "NEAR Mainnet"
+                    "near-testnet": "NEAR Testnet"
                 timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
@@ -122,13 +131,15 @@ paths:
                 timestamp: 1640995200000
                 version: "1.0.0"
                 chains:
-                  ethereum:
+                  "1":
+                    name: "Ethereum"
                     connected: true
-                    blockNumber: 18500000
+                    blockNumber: 23057003
                     latency: 120
-                  near:
+                  "398":
+                    name: "NEAR Testnet"
                     connected: true
-                    blockNumber: 105000000
+                    blockNumber: 157970611
                     latency: 80
                 activeOrders: 12
                 completedOrders: 1543
@@ -151,12 +162,12 @@ paths:
               example:
                 success: true
                 data:
-                  - orderHash: "0x123..."
-                    maker: "0xabc..."
-                    sourceChain: "ethereum"
-                    destinationChain: "near"
-                    sourceAmount: "1000000000000000000"
-                    destinationAmount: "100000000000000000000000000"
+                  - orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
+                    maker: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                    sourceChain: "11155111"
+                    destinationChain: "398"
+                    sourceAmount: "10000000"
+                    destinationAmount: "10000000"
                     phase: "submitted"
                 timestamp: 1640995200000
         "500":
@@ -170,6 +181,9 @@ paths:
 
         This endpoint uses the 1inch SDK internally to create a properly structured CrossChainOrder
         with HashLock, TimeLocks, and AuctionDetails. The frontend then signs this order.
+
+        Returns the orderHash along with success/message fields for the prepared order.
+        The full order details are stored in the database and can be retrieved during submission.
       operationId: generateOrder
       tags:
         - Orders
@@ -180,13 +194,13 @@ paths:
             schema:
               $ref: "#/components/schemas/GenerateOrderRequest"
             example:
-              userAddress: "0x742d35Cc6B3e6F1b8e0A8D6d1e5E"
-              amount: "1000000000000000000"
-              fromToken: "ETH"
-              toToken: "NEAR"
-              fromChain: "ethereum"
-              toChain: "near"
-              secretHash: "0xabc123..."
+              userAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+              amount: "10000000"
+              fromToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+              toToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+              fromChain: "11155111"
+              toChain: "398"
+              secretHash: "0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524"
       responses:
         "200":
           description: Unsigned order generated successfully
@@ -197,18 +211,9 @@ paths:
               example:
                 success: true
                 data:
-                  orderHash: "0x123..."
-                  fusionOrder:
-                    inner:
-                      settlementExtensionContract:
-                        val: "0x..."
-                      inner:
-                        makerAsset:
-                          val: "0x..."
-                        takerAsset:
-                          val: "0x..."
-                        makingAmount: "1000000000000000000"
-                        takingAmount: "100000000000000000000000000"
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
+                  success: true
+                  message: "Order prepared successfully. Use this orderHash with your signature to submit."
                 timestamp: 1640995200000
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -232,7 +237,7 @@ paths:
             schema:
               $ref: "#/components/schemas/SubmitSignedOrderRequest"
             example:
-              orderHash: "0x123..."
+              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               signedOrder:
                 inner:
                   settlementExtensionContract:
@@ -255,7 +260,7 @@ paths:
               example:
                 success: true
                 data:
-                  orderHash: "0x123..."
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   phase: "submitted"
                   isCompleted: false
                 timestamp: 1640995200000
@@ -290,19 +295,19 @@ paths:
               example:
                 success: true
                 data:
-                  orderHash: "0x123..."
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   phase: "src_escrow_deployed"
                   sourceEscrow:
-                    orderHash: "0x123..."
-                    chain: "ethereum"
-                    contractAddress: "0xabc..."
-                    amount: "1000000000000000000"
+                    orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
+                    chain: "11155111"
+                    contractAddress: "0x128ce802AB730FbB360b784CA8C16dD73147649c"
+                    amount: "10000000"
                     isCreated: true
                   destinationEscrow:
-                    orderHash: "0x123..."
-                    chain: "near"
-                    contractAddress: "escrow.near"
-                    amount: "100000000000000000000000000"
+                    orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
+                    chain: "398"
+                    contractAddress: "escrow-dst-template.testnet"
+                    amount: "10000000"
                     isCreated: true
                   auction:
                     startTime: 1640995200000
@@ -359,21 +364,23 @@ paths:
                     success: true
                     data:
                       safe: true
-                      orderHash: "0x123..."
+                      orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                       srcEscrowVerified: true
                       dstEscrowVerified: true
                       verification:
                         srcEscrowDetails:
-                          escrowAddress: "0x456..."
-                          chainName: "ethereum"
+                          escrowAddress: "0x128ce802AB730FbB360b784CA8C16dD73147649c"
+                          chainName: "Sepolia"
+                          chainId: "11155111"
                           contractExists: true
                           amountMatches: true
                           tokenMatches: true
                           secretHashMatches: true
                           properlyFunded: true
                         dstEscrowDetails:
-                          escrowAddress: "escrow.near"
-                          chainName: "near"
+                          escrowAddress: "escrow-dst-template.testnet"
+                          chainName: "NEAR Testnet"
+                          chainId: "398"
                           contractExists: true
                           amountMatches: true
                           tokenMatches: true
@@ -387,12 +394,12 @@ paths:
                     success: false
                     data:
                       safe: false
-                      orderHash: "0x123..."
+                      orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                       srcEscrowVerified: false
                       dstEscrowVerified: true
                       issues:
-                        - "❌ Escrow already withdrawn! Secret revealed: 0xabc123..."
-                        - "❌ Insufficient ETH balance: expected 1000000000000000000, got 0"
+                        - "❌ Escrow already withdrawn! Secret revealed: 0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524"
+                        - "❌ Insufficient USDC balance: expected 10000000, got 0"
                       message: "NOT safe to reveal secret"
                     timestamp: 1640995200000
         "400":
@@ -441,7 +448,7 @@ paths:
                 success: true
                 data:
                   claimed: true
-                  orderHash: "0x123..."
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   resolverAddress: "0xdef..."
                 timestamp: 1640995200000
         "400":
@@ -493,7 +500,7 @@ paths:
                 success: true
                 data:
                   confirmed: true
-                  orderHash: "0x123..."
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   escrowType: "src"
                   escrowAddress: "0x789..."
                 timestamp: 1640995200000
@@ -542,7 +549,7 @@ paths:
                 success: true
                 data:
                   updated: true
-                  orderHash: "0x123..."
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                 timestamp: 1640995200000
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -620,7 +627,7 @@ paths:
             schema:
               $ref: "#/components/schemas/ResolverBidRequest"
             example:
-              orderHash: "0x123..."
+              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               resolver: "0xdef..."
               estimatedGas: 150000
               signature: "0x..."
@@ -726,7 +733,7 @@ paths:
               example:
                 success: true
                 data:
-                  orderHash: "0x123..."
+                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   startTime: 1640995200000
                   duration: 300000
                   initialRateBump: 1000
@@ -764,13 +771,15 @@ paths:
                   errorRate: 0.02
                   uptime: 86400000
                   chains:
-                    ethereum:
+                    "1":
+                      name: "Ethereum"
                       connected: true
-                      blockNumber: 18500000
+                      blockNumber: 23057003
                       latency: 120
-                    near:
+                    "398":
+                      name: "NEAR Testnet"
                       connected: true
-                      blockNumber: 105000000
+                      blockNumber: 157970611
                       latency: 80
                   performance:
                     avgOrderCompletionTime: 600000
@@ -913,12 +922,12 @@ components:
           description: Destination token symbol or address
         fromChain:
           type: string
-          enum: [ethereum, base, bsc, polygon, arbitrum]
-          description: Source blockchain
+          description: Source blockchain (chain ID as string, e.g., "1" for Ethereum, "11155111" for Sepolia)
+          example: "11155111"
         toChain:
           type: string
-          enum: [near, ethereum, base, bsc, polygon, arbitrum]
-          description: Destination blockchain
+          description: Destination blockchain (chain ID as string, e.g., "398" for NEAR testnet)
+          example: "398"
         secretHash:
           type: string
           description: Secret hash for HTLC
@@ -1064,12 +1073,12 @@ components:
       properties:
         sourceChain:
           type: string
-          enum: [ethereum, base, bsc, polygon, arbitrum]
-          description: Source blockchain
+          description: Source blockchain (chain ID as string)
+          example: "11155111"
         destinationChain:
           type: string
-          enum: [near]
-          description: Destination blockchain
+          description: Destination blockchain (chain ID as string)
+          example: "398"
         sourceToken:
           type: string
           description: Source token symbol or address

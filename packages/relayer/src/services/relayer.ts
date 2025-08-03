@@ -187,6 +187,8 @@ export class RelayerService extends EventEmitter {
   async createFusionOrder(params: GenerateOrderRequest): Promise<{
     orderHash: string;
     fusionOrder: any; // SDK CrossChainOrder
+    success: boolean;
+    message: string;
   }> {
     try {
       this.validateInitialized();
@@ -304,7 +306,11 @@ export class RelayerService extends EventEmitter {
         dstChainId,
       };
 
-      await this.database.storePreparedOrder(orderHash, order, orderDetails);
+      await this.databaseService.storePreparedOrder(
+        orderHash,
+        order,
+        orderDetails
+      );
 
       this.logger.info("Order prepared and stored", {
         orderHash,
@@ -314,6 +320,7 @@ export class RelayerService extends EventEmitter {
       // Only return orderHash - full order details are stored in DB
       return {
         orderHash,
+        fusionOrder: order,
         success: true,
         message:
           "Order prepared successfully. Use this orderHash with your signature to submit.",
@@ -521,7 +528,8 @@ export class RelayerService extends EventEmitter {
       this.validateInitialized();
 
       // Retrieve the prepared order from database
-      const preparedOrder = await this.database.getPreparedOrder(orderHash);
+      const preparedOrder =
+        await this.databaseService.getPreparedOrder(orderHash);
       if (!preparedOrder) {
         throw new Error(`Prepared order not found for hash: ${orderHash}`);
       }

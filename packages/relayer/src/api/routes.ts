@@ -307,11 +307,11 @@ export function createRelayerRoutes(
 
       try {
         // Create unsigned Fusion+ order internally
-        const { orderHash, fusionOrder } =
+        const result =
           await relayerService.createFusionOrder(generateOrderRequest);
 
         logger.info("Order details generated via API", {
-          orderHash,
+          orderHash: result.orderHash,
           userAddress: generateOrderRequest.userAddress,
           fromChain: generateOrderRequest.fromChain,
           toChain: generateOrderRequest.toChain,

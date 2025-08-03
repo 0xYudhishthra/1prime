@@ -338,10 +338,18 @@ export class DatabaseService {
     orderDetails: any
   ): Promise<void> {
     try {
+      // Custom replacer to handle BigInt serialization
+      const bigIntReplacer = (key: string, value: any) => {
+        if (typeof value === "bigint") {
+          return value.toString();
+        }
+        return value;
+      };
+
       const preparedOrderRecord = {
         orderHash,
-        fusionOrder: JSON.stringify(fusionOrder), // Store the full SDK order
-        orderDetails: JSON.stringify(orderDetails), // Store order preparation details
+        fusionOrder: JSON.stringify(fusionOrder, bigIntReplacer), // Store the full SDK order
+        orderDetails: JSON.stringify(orderDetails, bigIntReplacer), // Store order preparation details
         status: "prepared",
         createdAt: Date.now(),
         updatedAt: Date.now(),

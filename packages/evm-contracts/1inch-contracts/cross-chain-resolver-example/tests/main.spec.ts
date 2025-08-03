@@ -188,6 +188,57 @@ describe('Resolving example', () => {
             const orderHash = order.getOrderHash(srcChainId)
             console.log('orderHash', orderHash)
             // Resolver fills order
+
+            // Using the original order directly - it's already a proper SDK instance
+
+            // STEP 1: Store CrossChainOrder as JSON (simulate DB storage)
+            const bigIntReplacer = (key: string, value: any) => {
+                if (typeof value === 'bigint') {
+                    return value.toString() + 'n' // Add 'n' suffix to identify BigInt strings
+                }
+                return value
+            }
+
+            const orderForStorage = JSON.stringify(order, bigIntReplacer)
+            console.log('Stored order JSON:', orderForStorage)
+
+            // STEP 2: Retrieve and reconstruct CrossChainOrder from JSON
+            const bigIntReviver = (key: string, value: any) => {
+                if (typeof value === 'string' && value.endsWith('n')) {
+                    return BigInt(value.slice(0, -1)) // Remove 'n' and convert to BigInt
+                }
+                return value
+            }
+
+            const retrievedOrderData = JSON.parse(orderForStorage, bigIntReviver)
+
+            // STEP 3: Reconstruct from the specific JSON structure
+            const order2Json =
+                '{"inner":{"settlementExtensionContract":{"val":"0x128ce802ab730fbb360b784ca8c16dd73147649c"},"inner":{"extension":{"makerAssetSuffix":"0x","takerAssetSuffix":"0x","makingAmountData":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000000000688eb0020000780003e8","takingAmountData":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000000000688eb0020000780003e8","predicate":"0x","makerPermit":"0x","preInteraction":"0x","postInteraction":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000784ca8c16dd73147649c000008a82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524000000000000000000000000000000000000000000000000000000000000018e000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000038d7ea4c68000000000000000000000038d7ea4c680000000000000000708000002580000012c00000e1000000708000002580000012c","customData":"0x"},"makerAsset":{"val":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"},"takerAsset":{"val":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"},"makingAmount":"10000000000000000000000000","takingAmount":"10000000000000000000000000","_salt":"1030629731931944111395907960987039230401789224254309","maker":{"val":"0xeb0d8736cc2c47882f112507cc8a3355d37d2413"},"receiver":{"val":"0x0000000000000000000000000000000000000000"},"makerTraits":{"value":{"value":"62419173104490761595518734107365288598254819464995305869192466274625670610944"}}},"fusionExtension":{"address":{"val":"0x128ce802ab730fbb360b784ca8c16dd73147649c"},"auctionDetails":{"startTime":"1754181634","initialRateBump":"1000","duration":"120","points":[],"gasCost":{"gasBumpEstimate":"0","gasPriceEstimate":"0"}},"postInteractionData":{"whitelist":[{"delay":"0","addressHalf":"784ca8c16dd73147649c"}],"bankFee":"0","resolvingStartTime":"0"},"builder":{"makerAssetSuffix":"0x","takerAssetSuffix":"0x","makingAmountData":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000000000688eb0020000780003e8","takingAmountData":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000000000688eb0020000780003e8","predicate":"0x","makerPermit":"0x","preInteraction":"0x","postInteraction":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000784ca8c16dd73147649c000008","customData":"0x"},"hashLockInfo":{"value":"0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524"},"dstChainId":398,"dstToken":{"val":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"},"srcSafetyDeposit":"1000000000000000","dstSafetyDeposit":"1000000000000000","timeLocks":"0x708000002580000012c00000e1000000708000002580000012c"},"escrowExtension":{"address":{"val":"0x128ce802ab730fbb360b784ca8c16dd73147649c"},"auctionDetails":{"startTime":"1754181634","initialRateBump":"1000","duration":"120","points":[],"gasCost":{"gasBumpEstimate":"0","gasPriceEstimate":"0"}},"postInteractionData":{"whitelist":[{"delay":"0","addressHalf":"784ca8c16dd73147649c"}],"bankFee":"0","resolvingStartTime":"0"},"builder":{"makerAssetSuffix":"0x","takerAssetSuffix":"0x","makingAmountData":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000000000688eb0020000780003e8","takingAmountData":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000000000688eb0020000780003e8","predicate":"0x","makerPermit":"0x","preInteraction":"0x","postInteraction":"0x128ce802ab730fbb360b784ca8c16dd73147649c00000000784ca8c16dd73147649c000008","customData":"0x"},"hashLockInfo":{"value":"0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524"},"dstChainId":398,"dstToken":{"val":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"},"srcSafetyDeposit":"1000000000000000","dstSafetyDeposit":"1000000000000000","timeLocks":"0x708000002580000012c00000e1000000708000002580000012c"}}}'
+
+            const order2Data = JSON.parse(order2Json)
+
+            // Extract LimitOrderV4Struct (first parameter)
+            const limitOrderData = {
+                salt: order2Data.inner.inner._salt,
+                maker: order2Data.inner.inner.maker.val,
+                receiver: order2Data.inner.inner.receiver.val,
+                makerAsset: order2Data.inner.inner.makerAsset.val,
+                takerAsset: order2Data.inner.inner.takerAsset.val,
+                makingAmount: order2Data.inner.inner.makingAmount,
+                takingAmount: order2Data.inner.inner.takingAmount,
+                makerTraits: order2Data.inner.inner.makerTraits.value.value,
+                extension: order2Data.inner.inner.extension
+            }
+
+            // Extract Extension (second parameter)
+            const extensionData = order2Data.fusionExtension
+
+            const reconstructedOrder = Sdk.CrossChainOrder.fromDataAndExtension(limitOrderData, extensionData)
+            console.log('Reconstructed order hash:', reconstructedOrder.getOrderHash(srcChainId))
+            const signature2 = await srcChainUser.signOrder(srcChainId, reconstructedOrder)
+            console.log('signature2', signature2)
+
             const resolverContract = new Resolver(src.resolver, dst.resolver)
 
             console.log(`[${srcChainId}]`, `Filling order ${orderHash}`)
@@ -325,8 +376,6 @@ describe('Resolving example', () => {
             )
 
             const signature = await srcChainUser.signOrder(srcChainId, order)
-            const order2 = JSON.parse(JSON.stringify(order))
-            const signature2 = await srcChainUser.signOrder(srcChainId, order2)
 
             const orderHash = order.getOrderHash(srcChainId)
             // Resolver fills order
