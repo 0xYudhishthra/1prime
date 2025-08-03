@@ -17,7 +17,6 @@ export class OrderManager extends EventEmitter {
   private orders: Map<string, FusionOrder> = new Map();
   private orderStatuses: Map<string, OrderStatus> = new Map();
 
-
   // Enhanced managers for partial fills and custom curves
   private partialFillManager: PartialFillManager;
   private customCurveManager: CustomCurveManager;

@@ -119,8 +119,12 @@ paths:
                 data:
                   - orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                     maker: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                    userSrcAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                    userDstAddress: "user.near"
                     sourceChain: "ethereum"
                     destinationChain: "near-testnet"
+                    sourceToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+                    destinationToken: "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"
                     sourceAmount: "10000000"
                     destinationAmount: "10000000"
                     phase: "claimed"
@@ -594,6 +598,8 @@ components:
       required:
         - userSrcAddress
         - userDstAddress
+        - userSrcAddress
+        - userDstAddress
         - amount
         - fromToken
         - toToken
@@ -612,10 +618,10 @@ components:
           description: Amount to swap from source chain (in wei/smallest unit)
         fromToken:
           type: string
-          description: Source token symbol or address
+          description: Source token symbol (e.g., "usdc", "eth", "weth")
         toToken:
           type: string
-          description: Destination token symbol or address
+          description: Destination token symbol (e.g., "usdc", "eth", "weth")
         fromChain:
           type: string
           description: Source blockchain chain ID or name (e.g., "11155111", "ethereum", "base", "bsc", "polygon", "arbitrum")

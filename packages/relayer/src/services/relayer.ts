@@ -25,7 +25,11 @@ import {
   getEscrowFactoryAddress,
   getChainNameFromChainId,
 } from "../config/chains";
-import { getTokenAddress, isTokenSupportedOnChain } from "../config/tokens";
+import {
+  getTokenAddress,
+  isTokenSupportedOnChain,
+  TOKEN_CONFIGS,
+} from "../config/tokens";
 
 // Helper function to determine if a chain is EVM-based
 function isEvmChain(chainId: string): boolean {
@@ -368,30 +372,47 @@ export class RelayerService extends EventEmitter {
         dstChainId as keyof typeof chainIdToNetwork
       ] || NetworkEnum.ETHEREUM) as any;
 
+      // Convert chain IDs to chain names for proper token lookup
+      const srcChainName = getChainNameFromChainId(srcChainId) || srcChainId;
+      const dstChainName = getChainNameFromChainId(dstChainId) || dstChainId;
+
       //Get the appropriate escrow factory address for the source chain
-      const chainName = getChainNameFromChainId(srcChainId);
-      const escrowFactoryAddress = getEscrowFactoryAddress(chainName as string);
-
-      console.log("escrowFactoryAddress", escrowFactoryAddress);
-
-      // Validate token support on respective chains
-      if (!isTokenSupportedOnChain(params.fromToken, srcChainId)) {
-        throw new Error(
-          `Token '${params.fromToken}' not supported on chain '${srcChainId}'`
-        );
-      }
-      if (!isTokenSupportedOnChain(params.toToken, dstChainId)) {
-        throw new Error(
-          `Token '${params.toToken}' not supported on chain '${dstChainId}'`
-        );
-      }
-
-      // Resolve token addresses based on chain
-      const sourceTokenAddress = getTokenAddress(params.fromToken, srcChainId);
-      const destinationTokenAddress = getTokenAddress(
-        params.toToken,
-        dstChainId
+      const escrowFactoryAddress = getEscrowFactoryAddress(
+        srcChainName as string
       );
+
+      // Validate token support on respective chains using chain names (with fallback to chain IDs)
+      if (
+        !isTokenSupportedOnChain(params.fromToken, srcChainName) &&
+        !isTokenSupportedOnChain(params.fromToken, srcChainId)
+      ) {
+        throw new Error(
+          `Token '${params.fromToken}' not supported on chain '${srcChainName}' (${srcChainId})`
+        );
+      }
+      if (
+        !isTokenSupportedOnChain(params.toToken, dstChainName) &&
+        !isTokenSupportedOnChain(params.toToken, dstChainId)
+      ) {
+        throw new Error(
+          `Token '${params.toToken}' not supported on chain '${dstChainName}' (${dstChainId})`
+        );
+      }
+
+      // Resolve token addresses based on chain names (with fallback to chain IDs)
+      let sourceTokenAddress: string;
+      try {
+        sourceTokenAddress = getTokenAddress(params.fromToken, srcChainName);
+      } catch {
+        sourceTokenAddress = getTokenAddress(params.fromToken, srcChainId);
+      }
+
+      let destinationTokenAddress: string;
+      try {
+        destinationTokenAddress = getTokenAddress(params.toToken, dstChainName);
+      } catch {
+        destinationTokenAddress = getTokenAddress(params.toToken, dstChainId);
+      }
 
       // Process addresses: convert NEAR addresses to EVM placeholders for SDK compatibility
       const processedUserSrcAddress = this.processAddress(
@@ -489,10 +510,30 @@ export class RelayerService extends EventEmitter {
           }
         );
       } else {
+        console.log("hashLock", hashLock);
+        console.log(
+          "timeLocks",
+          TimeLocks.new({
+            srcWithdrawal: 300n, // 5 minutes finality lock
+            srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
+            srcCancellation: 1800n, // 30 minutes cancellation
+            srcPublicCancellation: 3600n, // 1 hour public cancellation
+            dstWithdrawal: 300n, // 5 minutes finality lock
+            dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
+            dstCancellation: 1800n, // 30 minutes cancellation
+          })
+        );
+        console.log("srcChain", srcChain);
+        console.log("dstChain", dstChain);
+        console.log("srcSafetyDeposit", parseUnits("0.001", 18));
+        console.log("dstSafetyDeposit", parseUnits("0.001", 18));
+        console.log("escrowFactory", processedEscrowFactory);
+        console.log("userSrcAddress", processedUserSrcAddress);
+        console.log("userDstAddress", processedUserDstAddress);
         // All other cases (NEAR to EVM, NEAR to NEAR, etc.): use CrossChainOrder.new_near
-        order = CrossChainOrder.new_near(
+        order = CrossChainOrder.new(
+          new Address(processedEscrowFactory),
           {
-            salt: randBigInt(1000n),
             maker: new Address(processedUserSrcAddress),
             makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
             takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
@@ -534,7 +575,8 @@ export class RelayerService extends EventEmitter {
             nonce: randBigInt(UINT_40_MAX),
             allowPartialFills: false, // Single fill for now
             allowMultipleFills: false, // Single fill for now
-          }
+          },
+          true
         );
       }
 

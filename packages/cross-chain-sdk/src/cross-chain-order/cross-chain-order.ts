@@ -159,7 +159,8 @@ export class CrossChainOrder {
         orderInfo: CrossChainOrderInfo,
         escrowParams: EscrowParams,
         details: Details,
-        extra?: Extra
+        extra?: Extra,
+        isNear?: boolean
     ): CrossChainOrder {
         const postInteractionData = SettlementPostInteractionData.new({
             bankFee: details.fees?.bankFee || 0n,
@@ -172,7 +173,7 @@ export class CrossChainOrder {
         })
 
         const ext = new EscrowExtension(
-            escrowFactory,
+            isNear ? Address.ZERO_ADDRESS : escrowFactory,
             details.auction,
             postInteractionData,
             extra?.permit
@@ -183,7 +184,7 @@ export class CrossChainOrder {
                 : undefined,
             escrowParams.hashLock,
             escrowParams.dstChainId,
-            orderInfo.takerAsset, // Convert NEAR or use EVM Address
+            isNear ? Address.ZERO_ADDRESS : orderInfo.takerAsset, // Convert NEAR or use EVM Address
             escrowParams.srcSafetyDeposit,
             escrowParams.dstSafetyDeposit,
             escrowParams.timeLocks
@@ -207,74 +208,21 @@ export class CrossChainOrder {
         return new CrossChainOrder(
             ext,
             {
-                makerAsset: toAddress(orderInfo.makerAsset), // Convert NEAR or use EVM Address
+                makerAsset: isNear
+                    ? Address.ZERO_ADDRESS
+                    : toAddress(orderInfo.makerAsset), // Convert NEAR or use EVM Address
                 takerAsset: toAddress(orderInfo.takerAsset), // Convert NEAR or use EVM Address
                 makingAmount: orderInfo.makingAmount,
                 takingAmount: orderInfo.takingAmount,
-                maker: toAddress(orderInfo.maker), // Convert NEAR or use EVM Address
+                maker: isNear
+                    ? Address.ZERO_ADDRESS
+                    : toAddress(orderInfo.maker), // Convert NEAR or use EVM Address
                 salt: orderInfo.salt,
                 receiver: orderInfo.receiver
-                    ? toAddress(orderInfo.receiver) // Convert NEAR or use EVM Address
+                    ? isNear
+                        ? Address.ZERO_ADDRESS
+                        : toAddress(orderInfo.receiver) // Convert NEAR or use EVM Address
                     : undefined
-            },
-            extra
-        )
-    }
-
-    /**
-     * Create a new CrossChainOrder for NEAR, but is a bit more lax with types.
-     * @param orderInfo
-     * @param escrowParams
-     * @param details
-     * @param extra
-     * @returns
-     */
-    public static new_near(
-        orderInfo: CrossChainOrderInfo,
-        escrowParams: EscrowParams,
-        details: Details,
-        extra?: Extra
-    ): CrossChainOrder {
-        let postInteractionData: SettlementPostInteractionData | undefined
-
-        const ext = new EscrowExtension(
-            Address.ZERO_ADDRESS,
-            details.auction,
-            postInteractionData as SettlementPostInteractionData,
-            undefined,
-            escrowParams.hashLock,
-            escrowParams.dstChainId,
-            orderInfo.takerAsset, // Convert NEAR or use EVM Address
-            escrowParams.srcSafetyDeposit,
-            escrowParams.dstSafetyDeposit,
-            escrowParams.timeLocks
-        )
-
-        assert(
-            isSupportedChain(escrowParams.srcChainId),
-            `Not supported chain ${escrowParams.srcChainId}`
-        )
-
-        assert(
-            isSupportedChain(escrowParams.dstChainId),
-            `Not supported chain ${escrowParams.dstChainId}`
-        )
-
-        assert(
-            escrowParams.srcChainId !== escrowParams.dstChainId,
-            'Chains must be different'
-        )
-
-        return new CrossChainOrder(
-            ext,
-            {
-                makerAsset: Address.ZERO_ADDRESS,
-                takerAsset: toAddress(orderInfo.takerAsset), // TARGET ASSET ON EVM
-                makingAmount: orderInfo.makingAmount,
-                takingAmount: orderInfo.takingAmount,
-                maker: Address.ZERO_ADDRESS, // Convert NEAR or use EVM Address
-                salt: orderInfo.salt,
-                receiver: toAddress(orderInfo.receiver ?? Address.ZERO_ADDRESS)
             },
             extra
         )
