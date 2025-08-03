@@ -16,6 +16,15 @@ info:
     - Comprehensive token discovery: Native tokens (ETH, NEAR) + all supported tokens (ERC-20s, NEP-141s)
     - Chain-abstracted balance views for unified multi-token wallet management
 
+    ## Cross-Chain Swaps
+    - **1inch Fusion+ Integration**: Atomic swaps using 1inch Fusion+ protocol
+    - **Bi-directional Support**: EVM ↔ NEAR protocol swaps
+    - **User-Friendly Interface**: Chain names ("ethereum", "near") and human-readable amounts ("10" USDC)
+    - **Automatic Token Assignment**: USDC contracts auto-assigned based on chains
+    - **Real-time Status Tracking**: Live polling of order status with detailed phase information
+    - **NEAR Integration**: Automatic USDC approval for NEAR-originated swaps
+    - **Voice Control Ready**: Optimized for Apple Shortcuts and Siri integration
+
     ## Security Note
     This is a proof-of-concept with simplified security for validation purposes.
   version: 1.0.0
@@ -965,6 +974,441 @@ paths:
               example:
                 error: 'Failed to fetch balances'
 
+  /hash-random-number:
+    post:
+      tags:
+        - Cross-Chain Swaps
+      summary: Hash a random number using Keccak-256
+      description: |
+        Utility endpoint to hash a random number using Keccak-256.
+        Used for testing cryptographic hash generation.
+      security: [] # No auth required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - number
+              properties:
+                number:
+                  type: string
+                  description: The random number to hash
+                  example: '12345'
+      responses:
+        '200':
+          description: Hash generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                    description: Keccak-256 hash of the input number
+                    example: '0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524'
+
+  /api/cross-chain-swap:
+    post:
+      tags:
+        - Cross-Chain Swaps
+      summary: Initiate a cross-chain swap
+      description: |
+        Initiates a cross-chain swap between supported EVM chains and NEAR protocol using 1inch Fusion+ atomic swaps.
+        
+        **Supported Chains:**
+        - EVM: "ethereum" (Sepolia), "arbitrum" (Sepolia), "optimism" (Sepolia)
+        - NEAR: "near" (Testnet), "near-mainnet" (Mainnet)
+        
+        **Features:**
+        - User-friendly chain names (case-insensitive)
+        - Automatic amount conversion (e.g., "10" → "10000000" for USDC)
+        - Auto-assigned USDC token contracts
+        - NEAR USDC approval for NEAR-originated swaps
+        - Real-time polling and status updates
+        - Bi-directional EVM ↔ NEAR support
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - fromChain
+                - toChain
+              properties:
+                amount:
+                  type: string
+                  description: User-friendly amount (e.g., "10" for 10 USDC)
+                  example: '10'
+                fromChain:
+                  type: string
+                  description: Source chain name (case-insensitive)
+                  enum: ['ethereum', 'arbitrum', 'optimism', 'near', 'near-testnet', 'near-mainnet']
+                  example: 'ethereum'
+                toChain:
+                  type: string
+                  description: Destination chain name (case-insensitive)
+                  enum: ['ethereum', 'arbitrum', 'optimism', 'near', 'near-testnet', 'near-mainnet']
+                  example: 'near'
+                relayerUrl:
+                  type: string
+                  description: Optional custom relayer URL (defaults to production relayer)
+                  example: 'https://1prime-relayer.up.railway.app/api/v1'
+      responses:
+        '200':
+          description: Cross-chain swap initiated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      orderId:
+                        type: string
+                        description: Unique order identifier
+                        example: 'order_1754225913981_dfjl1cmae'
+                      status:
+                        type: string
+                        description: Current order status
+                        example: 'completed'
+                      message:
+                        type: string
+                        description: Status message
+                        example: 'Cross-chain swap completed successfully'
+                  error:
+                    type: string
+                    nullable: true
+                    description: Error message if swap failed
+                  timestamp:
+                    type: integer
+                    description: Unix timestamp
+                    example: 1703123456789
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Missing required swap parameters (amount, fromChain, toChain)'
+                  timestamp:
+                    type: integer
+                    example: 1703123456789
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
+        '500':
+          description: Swap execution failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'NEAR USDC approval failed: Failed to approve USDC spending on NEAR'
+                  timestamp:
+                    type: integer
+                    example: 1703123456789
+
+  /api/cross-chain-swap/{orderId}/status:
+    get:
+      tags:
+        - Cross-Chain Swaps
+      summary: Get cross-chain swap order status
+      description: |
+        Retrieves the current status of a cross-chain swap order.
+        Returns both local database status and live relayer status when available.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: The unique order identifier
+          schema:
+            type: string
+            example: 'order_1754225913981_dfjl1cmae'
+      responses:
+        '200':
+          description: Order status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      orderId:
+                        type: string
+                        example: 'order_1754225913981_dfjl1cmae'
+                      orderHash:
+                        type: string
+                        nullable: true
+                        description: Relayer order hash (available after preparation)
+                        example: '0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524'
+                      currentPhase:
+                        type: string
+                        description: Current order phase
+                        enum: ['preparing', 'prepared', 'submitted', 'polling', 'waiting-for-secret', 'revealing-secret', 'completed', 'failed']
+                        example: 'completed'
+                      isCompleted:
+                        type: boolean
+                        example: true
+                      isSuccessful:
+                        type: boolean
+                        nullable: true
+                        example: true
+                      errorMessage:
+                        type: string
+                        nullable: true
+                        description: Error message if order failed
+                      secretRevealed:
+                        type: boolean
+                        description: Whether the secret has been revealed
+                        example: true
+                      sourceChain:
+                        type: string
+                        example: '11155111'
+                      destinationChain:
+                        type: string
+                        example: '398'
+                      sourceToken:
+                        type: string
+                        example: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
+                      destinationToken:
+                        type: string
+                        nullable: true
+                        example: '3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af'
+                      sourceAmount:
+                        type: string
+                        description: Amount in smallest unit
+                        example: '10000000'
+                      destinationAmount:
+                        type: string
+                        nullable: true
+                        description: Received amount (if known)
+                      statusHistory:
+                        type: array
+                        description: Historical status updates
+                        items:
+                          type: object
+                          properties:
+                            phase:
+                              type: string
+                              example: 'completed'
+                            timestamp:
+                              type: integer
+                              example: 1703123456789
+                            data:
+                              type: object
+                              nullable: true
+                              description: Additional phase-specific data
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: '2024-01-01T12:00:00Z'
+                      completedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        example: '2024-01-01T12:05:00Z'
+                      liveRelayerStatus:
+                        type: object
+                        nullable: true
+                        description: Live status from relayer (if available)
+                        properties:
+                          phase:
+                            type: string
+                            example: 'completed'
+                          isCompleted:
+                            type: boolean
+                            example: true
+                      dataSource:
+                        type: string
+                        description: Source of status data
+                        enum: ['local', 'relayer']
+                        example: 'relayer'
+                  timestamp:
+                    type: integer
+                    description: Unix timestamp
+                    example: 1703123456789
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Access denied - user does not own this order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Forbidden'
+                  timestamp:
+                    type: integer
+                    example: 1703123456789
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Order not found'
+                  timestamp:
+                    type: integer
+                    example: 1703123456789
+        '500':
+          description: Failed to fetch order status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Failed to fetch order status'
+                  timestamp:
+                    type: integer
+                    example: 1703123456789
+
+  /api/cross-chain-swap/orders:
+    get:
+      tags:
+        - Cross-Chain Swaps
+      summary: Get all cross-chain swap orders for authenticated user
+      description: |
+        Retrieves all cross-chain swap orders created by the authenticated user.
+        Returns orders sorted by creation date (newest first).
+      responses:
+        '200':
+          description: Orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        orderId:
+                          type: string
+                          example: 'order_1754225913981_dfjl1cmae'
+                        orderHash:
+                          type: string
+                          nullable: true
+                          description: Relayer order hash (if available)
+                          example: '0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524'
+                        currentPhase:
+                          type: string
+                          description: Current order phase
+                          example: 'completed'
+                        isCompleted:
+                          type: boolean
+                          example: true
+                        isSuccessful:
+                          type: boolean
+                          nullable: true
+                          example: true
+                        sourceChain:
+                          type: string
+                          description: Source chain ID
+                          example: '11155111'
+                        destinationChain:
+                          type: string
+                          description: Destination chain ID
+                          example: '398'
+                        sourceToken:
+                          type: string
+                          description: Source token contract address
+                          example: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
+                        destinationToken:
+                          type: string
+                          nullable: true
+                          description: Destination token contract address
+                          example: '3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af'
+                        sourceAmount:
+                          type: string
+                          description: Source amount in smallest unit
+                          example: '10000000'
+                        destinationAmount:
+                          type: string
+                          nullable: true
+                          description: Destination amount (if known)
+                        createdAt:
+                          type: string
+                          format: date-time
+                          example: '2024-01-01T12:00:00Z'
+                        completedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                          example: '2024-01-01T12:05:00Z'
+                  timestamp:
+                    type: integer
+                    description: Unix timestamp
+                    example: 1703123456789
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Failed to fetch orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Failed to fetch orders'
+                  timestamp:
+                    type: integer
+                    example: 1703123456789
+
   /api/**:
     get:
       tags:
@@ -1056,6 +1500,8 @@ tags:
     description: User authentication and account management
   - name: Wallet
     description: Multi-chain, multi-token wallet operations (native + ERC-20 + NEP-141)
+  - name: Cross-Chain Swaps
+    description: 1inch Fusion+ powered atomic swaps between EVM chains and NEAR protocol
   - name: EVM Transactions
     description: Ethereum Virtual Machine transaction operations
   - name: NEAR Transactions
@@ -1069,11 +1515,10 @@ x-future-endpoints:
     - GET /api/deposit/address/{chain} - Get deposit address for specific chain
     - POST /api/deposit/verify - Verify deposit transaction
 
-  swap:
-    - GET /api/swap/tokens/{chain} - Get supported tokens for chain
-    - POST /api/swap/quote - Get swap quote using 1inch Fusion+
-    - POST /api/swap/execute - Execute swap order
-    - GET /api/swap/status/{orderId} - Check swap status
+  swap-enhancements:
+    - GET /api/swap/tokens/{chain} - Get supported tokens for chain (beyond USDC)
+    - POST /api/swap/quote - Get swap quote with multiple token pairs
+    - POST /api/swap/cancel - Cancel pending swap order
 
   wallet:
     - POST /api/wallet/transfer - Transfer funds between chains or to/from EOA
@@ -1081,3 +1526,10 @@ x-future-endpoints:
     - POST /api/wallet/tokens/add - Add custom token to tracking list
     - DELETE /api/wallet/tokens/{address} - Remove token from tracking
     - GET /api/wallet/tokens/discover - Auto-discover tokens with balances
+
+x-implemented-features:
+  cross-chain-swaps:
+    - POST /api/cross-chain-swap - ✅ Implemented
+    - GET /api/cross-chain-swap/{orderId}/status - ✅ Implemented  
+    - GET /api/cross-chain-swap/orders - ✅ Implemented
+    - POST /hash-random-number - ✅ Implemented (utility)

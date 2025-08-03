@@ -3,7 +3,17 @@
   "name": "shortcut-auth",
   "main": "src/index.ts",
   "compatibility_date": "2025-07-24",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "BETTER_AUTH_SECRET": "3KsljbrR2YEggCslhQDA27ocgCa6jyoZ",
+    "BETTER_AUTH_URL": "https://shortcut-auth.tanweihup.workers.dev",
+    "DATABASE_URL": "postgresql://postgres.uhjujzygcquejejrdcnv:qpsXrTxtWu25JC2O@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres",
+    "ZERODEV_ARBITRUM_SEPOLIA_RPC": "https://rpc.zerodev.app/api/v3/1fe423a8-37e6-49bb-8d68-695daa779689/chain/421614",
+    "ZERODEV_ETHEREUM_SEPOLIA_RPC": "https://rpc.zerodev.app/api/v3/1fe423a8-37e6-49bb-8d68-695daa779689/chain/11155111",
+    "ZERODEV_OPTIMISM_SEPOLIA_RPC": "https://rpc.zerodev.app/api/v3/1fe423a8-37e6-49bb-8d68-695daa779689/chain/11155420"
+  }
   // "kv_namespaces": [
   //   {
   //     "binding": "MY_KV_NAMESPACE",
