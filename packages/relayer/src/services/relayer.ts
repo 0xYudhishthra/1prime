@@ -17,6 +17,7 @@ import {
 import { OrderManager } from "./order-manager";
 import { EscrowVerifier } from "./escrow-verifier";
 import { SecretManager, SecretRevealConditions } from "./secret-manager";
+import { OnChainVerifier, VerificationRequest } from "./on-chain-verifier";
 import { TimelockManager } from "./timelock-manager";
 import { ChainAdapterFactory } from "../adapters";
 import {
@@ -95,6 +96,7 @@ export class RelayerService extends EventEmitter {
   private escrowVerifier: EscrowVerifier;
   private secretManager: SecretManager;
   private timelockManager: TimelockManager;
+  private onChainVerifier: OnChainVerifier;
   private webSocketService?: any; // Optional WebSocket service
 
   // NEAR address mapping for SDK compatibility
@@ -135,6 +137,7 @@ export class RelayerService extends EventEmitter {
     this.escrowVerifier = new EscrowVerifier(logger, oneInchApiService);
     this.secretManager = new SecretManager(logger);
     this.timelockManager = new TimelockManager(logger);
+    this.onChainVerifier = new OnChainVerifier(logger);
 
     this.setupEventHandlers();
   }
@@ -1262,9 +1265,79 @@ export class RelayerService extends EventEmitter {
         throw new Error("Only assigned resolver can confirm escrow deployment");
       }
 
-      // TODO: Verify escrow contract deployment on-chain
-      // For now, we trust the resolver's confirmation
-      // In production, this should verify the contract exists on-chain
+      // Verify escrow contract deployment on-chain
+      this.logger.info("Starting on-chain escrow verification", {
+        orderHash: confirmation.orderHash,
+        escrowAddress: confirmation.escrowAddress,
+        transactionHash: confirmation.transactionHash,
+        blockNumber: confirmation.blockNumber,
+        escrowType: confirmation.escrowType,
+      });
+
+      // Get chain information from the order
+      const chainId =
+        confirmation.escrowType === "src"
+          ? extendedOrder.sourceChain
+          : extendedOrder.destinationChain;
+
+      const expectedAmount =
+        confirmation.escrowType === "src"
+          ? extendedOrder.sourceAmount
+          : extendedOrder.destinationAmount;
+
+      // Create verification request
+      const verificationRequest: VerificationRequest = {
+        orderHash: confirmation.orderHash,
+        escrowAddress: confirmation.escrowAddress,
+        transactionHash: confirmation.transactionHash,
+        blockNumber: confirmation.blockNumber,
+        chainId: chainId || "1", // fallback to mainnet if not found
+        expectedAmount,
+      };
+
+      // Perform on-chain verification
+      const verificationResult =
+        await this.onChainVerifier.verifyEscrowDeployment(verificationRequest);
+
+      // Log verification results
+      this.logger.info("On-chain verification completed", {
+        orderHash: confirmation.orderHash,
+        escrowAddress: confirmation.escrowAddress,
+        result: {
+          exists: verificationResult.exists,
+          deployedAtTxHash: verificationResult.deployedAtTxHash,
+          hasUsdcBalance: verificationResult.hasUsdcBalance,
+          usdcBalance: verificationResult.usdcBalance,
+          errorsCount: verificationResult.errors.length,
+        },
+      });
+
+      // Check if verification passed
+      if (!verificationResult.exists) {
+        throw new Error(
+          `Escrow contract verification failed: ${verificationResult.errors.join(", ")}`
+        );
+      }
+
+      if (!verificationResult.deployedAtTxHash) {
+        this.logger.warn(
+          "Escrow deployment transaction verification failed, but contract exists",
+          {
+            orderHash: confirmation.orderHash,
+            errors: verificationResult.errors,
+          }
+        );
+        // Don't fail completely, but log the warning
+      }
+
+      // Note: We don't fail on USDC balance verification since the escrow might be funded later
+      if (!verificationResult.hasUsdcBalance) {
+        this.logger.warn("Escrow has no USDC balance yet", {
+          orderHash: confirmation.orderHash,
+          escrowAddress: confirmation.escrowAddress,
+          balance: verificationResult.usdcBalance,
+        });
+      }
 
       // Update order with escrow information
       const updateData: any = {};

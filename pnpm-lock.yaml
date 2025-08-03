@@ -343,7 +343,7 @@ importers:
         specifier: workspace:*
         version: link:../cross-chain-sdk
       '@near-js/providers':
-        specifier: '2'
+        specifier: 2.2.4
         version: 2.2.4(@near-js/crypto@2.2.4)(@near-js/transactions@2.2.4)(@near-js/types@2.2.4)(@near-js/utils@2.2.4)
       '@supabase/supabase-js':
         specifier: ^2.38.5
@@ -381,6 +381,9 @@ importers:
       uuid:
         specifier: ^9.0.1
         version: 9.0.1
+      viem:
+        specifier: 2.33.1
+        version: 2.33.1(typescript@5.5.2)
       winston:
         specifier: ^3.11.0
         version: 3.17.0
@@ -498,7 +501,7 @@ importers:
         version: 3.4.7
       viem:
         specifier: 2.33.1
-        version: 2.33.1
+        version: 2.33.1(typescript@5.5.2)
     devDependencies:
       prettier:
         specifier: ^3.6.2
@@ -8805,7 +8808,7 @@ packages:
       viem: ^2.28.0
     dependencies:
       '@zerodev/sdk': 5.4.41(viem@2.33.1)
-      viem: 2.33.1
+      viem: 2.33.1(typescript@5.5.2)
     dev: false
 
   /@zerodev/intent@0.0.27(@zerodev/webauthn-key@5.4.4)(viem@2.33.1):
@@ -8816,7 +8819,7 @@ packages:
       '@zerodev/ecdsa-validator': 5.4.9(@zerodev/sdk@5.4.41)(viem@2.33.1)
       '@zerodev/multi-chain-ecdsa-validator': 5.4.5(@zerodev/sdk@5.4.41)(@zerodev/webauthn-key@5.4.4)(viem@2.33.1)
       '@zerodev/sdk': 5.4.41(viem@2.33.1)
-      viem: 2.33.1
+      viem: 2.33.1(typescript@5.5.2)
     transitivePeerDependencies:
       - '@zerodev/webauthn-key'
     dev: false
@@ -8833,7 +8836,7 @@ packages:
       '@zerodev/sdk': 5.4.41(viem@2.33.1)
       '@zerodev/webauthn-key': 5.4.4(viem@2.33.1)
       merkletreejs: 0.3.11
-      viem: 2.33.1
+      viem: 2.33.1(typescript@5.5.2)
     dev: false
 
   /@zerodev/sdk@5.4.41(viem@2.33.1):
@@ -8842,7 +8845,7 @@ packages:
       viem: ^2.28.0
     dependencies:
       semver: 7.7.2
-      viem: 2.33.1
+      viem: 2.33.1(typescript@5.5.2)
     dev: false
 
   /@zerodev/webauthn-key@5.4.4(viem@2.33.1):
@@ -8853,10 +8856,10 @@ packages:
       '@noble/curves': 1.9.6
       '@simplewebauthn/browser': 8.3.7
       '@simplewebauthn/types': 12.0.0
-      viem: 2.33.1
+      viem: 2.33.1(typescript@5.5.2)
     dev: false
 
-  /abitype@1.0.8:
+  /abitype@1.0.8(typescript@5.5.2):
     resolution: {integrity: sha512-ZeiI6h3GnW06uYDLx0etQtX/p8E24UaHHBj57RSjK7YBFe7iuVn07EDpOeP451D06sF27VOz9JJPlIKJmXgkEg==}
     peerDependencies:
       typescript: '>=5.0.4'
@@ -8866,6 +8869,8 @@ packages:
         optional: true
       zod:
         optional: true
+    dependencies:
+      typescript: 5.5.2
     dev: false
 
   /abort-controller@3.0.0:
@@ -14087,7 +14092,7 @@ packages:
       safe-push-apply: 1.0.0
     dev: true
 
-  /ox@0.8.1:
+  /ox@0.8.1(typescript@5.5.2):
     resolution: {integrity: sha512-e+z5epnzV+Zuz91YYujecW8cF01mzmrUtWotJ0oEPym/G82uccs7q0WDHTYL3eiONbTUEvcZrptAKLgTBD3u2A==}
     peerDependencies:
       typescript: '>=5.4.0'
@@ -14101,8 +14106,9 @@ packages:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.0.8
+      abitype: 1.0.8(typescript@5.5.2)
       eventemitter3: 5.0.1
+      typescript: 5.5.2
     transitivePeerDependencies:
       - zod
     dev: false
@@ -15738,7 +15744,6 @@ packages:
     resolution: {integrity: sha512-NcRtPEOsPFFWjobJEtfihkLCZCXZt/os3zf8nTxjVH3RvTSxjrCamJpbExGvYOF+tFHc3pA65qpdwPbzjohhew==}
     engines: {node: '>=14.17'}
     hasBin: true
-    dev: true
 
   /typescript@5.9.2:
     resolution: {integrity: sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==}
@@ -15973,7 +15978,7 @@ packages:
       d3-timer: 3.0.1
     dev: false
 
-  /viem@2.33.1:
+  /viem@2.33.1(typescript@5.5.2):
     resolution: {integrity: sha512-++Dkj8HvSOLPMKEs+ZBNNcWbBRlUHcXNWktjIU22hgr6YmbUldV1sPTGLZa6BYRm06WViMjXj6HIsHt8rD+ZKQ==}
     peerDependencies:
       typescript: '>=5.0.4'
@@ -15985,9 +15990,10 @@ packages:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.0.8
+      abitype: 1.0.8(typescript@5.5.2)
       isows: 1.0.7(ws@8.18.2)
-      ox: 0.8.1
+      ox: 0.8.1(typescript@5.5.2)
+      typescript: 5.5.2
       ws: 8.18.2
     transitivePeerDependencies:
       - bufferutil

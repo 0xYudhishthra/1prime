@@ -43,8 +43,6 @@ const serializeForJson = (obj: any): any => {
 
 const secretRevealSchema = Joi.object({
   secret: Joi.string().required(),
-  proof: Joi.string().required(),
-  signature: Joi.string().required(),
 });
 
 const generateOrderSchema = Joi.object({

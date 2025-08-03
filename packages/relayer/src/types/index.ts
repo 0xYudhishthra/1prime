@@ -216,8 +216,6 @@ export interface EscrowDeploymentConfirmation {
 export interface SecretRevealRequest {
   orderHash: string;
   secret: string;
-  proof: string;
-  signature: string;
 }
 
 export interface HealthCheckResponse {

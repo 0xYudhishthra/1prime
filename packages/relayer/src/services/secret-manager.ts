@@ -137,9 +137,7 @@ export class SecretManager extends EventEmitter {
       }
 
       // Skip resolver authorization - operating with single resolver
-      if (!request.signature) {
-        throw new Error("Signature is required for secret reveal");
-      }
+      // No signature required in simplified flow
 
       // Check reveal conditions
       const conditions = this.revealConditions.get(request.orderHash);
@@ -151,9 +149,9 @@ export class SecretManager extends EventEmitter {
         return null;
       }
 
-      // Verify proof (simplified - in production this would be more sophisticated)
-      if (!this.verifySecretProof(request)) {
-        throw new Error("Invalid secret reveal proof");
+      // Verify secret format (simplified - basic validation only)
+      if (!this.verifySecretFormat(request)) {
+        throw new Error("Invalid secret format");
       }
 
       // Reveal the secret
@@ -387,16 +385,13 @@ export class SecretManager extends EventEmitter {
     return Math.min(Math.floor(fillPercentage / partSize), totalParts - 1);
   }
 
-  private verifySecretProof(request: SecretRevealRequest): boolean {
-    // Simplified proof verification - in production this would involve
-    // cryptographic proof verification (e.g., zk-SNARKs, Merkle proofs, etc.)
-
-    // For now, just verify the request has required fields
+  private verifySecretFormat(request: SecretRevealRequest): boolean {
+    // Basic validation - verify the request has required fields and secret format
     return !!(
       request.orderHash &&
       request.secret &&
-      request.proof &&
-      request.signature
+      typeof request.secret === "string" &&
+      request.secret.length > 0
     );
   }
 

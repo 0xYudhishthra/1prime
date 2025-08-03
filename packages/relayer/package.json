@@ -16,7 +16,7 @@
   "dependencies": {
     "@1inch/byte-utils": "3.1.0",
     "@1inch/cross-chain-sdk": "workspace:*",
-    "@near-js/providers": "2",
+    "@near-js/providers": "2.2.4",
     "@supabase/supabase-js": "^2.38.5",
     "axios": "^1.6.2",
     "cors": "^2.8.5",
@@ -29,6 +29,7 @@
     "near-api-js": "^2.1.4",
     "node-cron": "^3.0.3",
     "uuid": "^9.0.1",
+    "viem": "2.33.1",
     "winston": "^3.11.0",
     "ws": "^8.14.2"
   },
