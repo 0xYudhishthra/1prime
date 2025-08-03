@@ -110,10 +110,6 @@ For immediate testing:
 - Specifies account names and network configuration
 - Includes ETH resolver address for cross-chain coordination
 
-
-
-
-
 ## Architecture Rationale Based on 1inch Whitepaper
 
 ### Timelock Implementation (Section 2.4)
