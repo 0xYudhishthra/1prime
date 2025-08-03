@@ -30,7 +30,8 @@ export const TOKEN_CONFIGS: Record<string, TokenConfig> = {
       "42161": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // Chain ID alias for arbitrum
       near: "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af",
       "397": "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af", // Chain ID alias for near
-      "near-testnet": "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af",
+      "near-testnet":
+        "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af",
       "398": "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af", // Chain ID alias for near-testnet
     },
   },
@@ -53,7 +54,8 @@ export const TOKEN_CONFIGS: Record<string, TokenConfig> = {
       "42161": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", // Chain ID alias for arbitrum
       near: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
       "397": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", // Chain ID alias for near
-      "near-testnet": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "near-testnet":
+        "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
       "398": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", // Chain ID alias for near-testnet
     },
   },
@@ -76,7 +78,8 @@ export const TOKEN_CONFIGS: Record<string, TokenConfig> = {
       "42161": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", // Chain ID alias for arbitrum
       near: "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96",
       "397": "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96", // Chain ID alias for near
-      "near-testnet": "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96",
+      "near-testnet":
+        "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96",
       "398": "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96", // Chain ID alias for near-testnet
     },
   },
@@ -100,7 +103,8 @@ export const TOKEN_CONFIGS: Record<string, TokenConfig> = {
       "42161": "0x0000000000000000000000000000000000000000", // Chain ID alias for arbitrum
       near: "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96",
       "397": "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96", // Chain ID alias for near
-      "near-testnet": "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96",
+      "near-testnet":
+        "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96",
       "398": "c9bdc319c7c02de7b85823a49ce63c48db7f37a7e40e0e6e89c70a1b78e46b96", // Chain ID alias for near-testnet
     },
   },

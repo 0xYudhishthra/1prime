@@ -185,10 +185,10 @@ export interface ApiResponse<T = any> {
 
 export interface GenerateOrderRequest {
   userSrcAddress: string; // User address on source chain
-  userDstAddress: string; // User address on destination chain  
+  userDstAddress: string; // User address on destination chain
   amount: string;
   fromToken: string; // Token symbol (e.g., "usdc", "eth")
-  toToken: string;   // Token symbol (e.g., "usdc", "eth")
+  toToken: string; // Token symbol (e.g., "usdc", "eth")
   fromChain: string;
   toChain: string;
   secretHash: string; // Previously generated secret hash from frontend
@@ -334,6 +334,10 @@ export interface FusionOrderExtended extends FusionOrder {
   phase?: string; // Current order phase (submitted, claimed, src_escrow_deployed, etc.)
   assignedResolver?: string; // Resolver assigned to this order
   estimatedGas?: number; // Gas estimate for execution
+
+  // Auction fields from SDK
+  auctionStartTime?: number; // Auction start timestamp
+  auctionDuration?: number; // Auction duration in seconds
 
   // Escrow contract addresses
   srcEscrowAddress?: string; // Source chain escrow contract address

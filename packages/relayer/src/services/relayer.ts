@@ -822,7 +822,16 @@ export class RelayerService extends EventEmitter {
         fusionExtension?.hashLockInfo?.value || orderDetails.secretHash,
       timeout: Date.now() + 3600000, // 1 hour from now
 
-      initialRateBump: 0, // Hardcoded to 0 - no dutch auction for now
+      // Extract auction fields from SDK (even though we don't use auction logic)
+      auctionStartTime: fusionExtension?.auctionDetails?.startTime
+        ? Number(fusionExtension.auctionDetails.startTime)
+        : Date.now(),
+      auctionDuration: fusionExtension?.auctionDetails?.duration
+        ? Number(fusionExtension.auctionDetails.duration)
+        : 120,
+      initialRateBump: fusionExtension?.auctionDetails?.initialRateBump
+        ? Number(fusionExtension.auctionDetails.initialRateBump)
+        : 1000,
       signature,
       nonce: innerOrder._salt || "",
       createdAt: Date.now(),
@@ -991,7 +1000,40 @@ export class RelayerService extends EventEmitter {
         );
 
       // Store in database
+      this.logger.info("Storing signed order in database", {
+        orderHash,
+        orderData: {
+          maker: completedOrder.maker,
+          userSrcAddress: completedOrder.userSrcAddress,
+          userDstAddress: completedOrder.userDstAddress,
+          sourceChain: completedOrder.sourceChain,
+          destinationChain: completedOrder.destinationChain,
+        },
+      });
+
       await this.databaseService.storeSignedOrder(completedOrder);
+
+      this.logger.info("Successfully stored signed order, verifying storage", {
+        orderHash,
+      });
+
+      // Verify the order was stored correctly
+      const storedOrder = await this.databaseService.getOrder(orderHash);
+      if (!storedOrder) {
+        this.logger.error(
+          "Order was not found after storage - this is a critical error!",
+          {
+            orderHash,
+          }
+        );
+        throw new Error("Failed to store order in database");
+      } else {
+        this.logger.info("Order successfully verified in database", {
+          orderHash,
+          storedOrderStatus: storedOrder.status,
+          storedOrderPhase: (storedOrder as any).phase,
+        });
+      }
 
       // Create order through OrderManager with the signed data
       const orderStatus =
@@ -1100,11 +1142,36 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
+      this.logger.info("Attempting to claim order", {
+        orderHash: claimRequest.orderHash,
+        resolverAddress: claimRequest.resolverAddress,
+      });
+
       // Verify order exists and get current state from database (not memory)
       const orderRecord = await this.databaseService.getOrder(
         claimRequest.orderHash
       );
+
+      this.logger.debug("Database lookup result", {
+        orderHash: claimRequest.orderHash,
+        found: !!orderRecord,
+        orderData: orderRecord
+          ? {
+              status: orderRecord.status,
+              phase: (orderRecord as any).phase,
+              createdAt: orderRecord.createdAt,
+            }
+          : null,
+      });
+
       if (!orderRecord) {
+        // Let's also check if there are any orders in the database at all
+        const allOrders = await this.databaseService.getActiveOrders();
+        this.logger.warn("Order not found, checking all orders in database", {
+          requestedHash: claimRequest.orderHash,
+          totalOrdersInDB: allOrders.length,
+          orderHashes: allOrders.map(o => o.orderHash),
+        });
         throw new Error("Order not found");
       }
 

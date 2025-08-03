@@ -78,7 +78,11 @@ export class DatabaseService {
         secretHash: order.secretHash || "",
         timeout: order.timeout || Date.now() + 3600000,
 
-        initialRateBump: order.initialRateBump || 1000,
+        // Auction-related fields (extracted from SDK but not used for auction logic)
+        auctionStartTime: (order as any).auctionStartTime || Date.now(),
+        auctionDuration: (order as any).auctionDuration || 120,
+        initialRateBump: (order as any).initialRateBump || 1000,
+
         signature: order.signature || "",
         nonce: order.nonce || "",
 
