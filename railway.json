@@ -6,8 +6,8 @@
         "install": {
           "dependsOn": ["setup"],
           "cmds": [
-            "cd packages/cross-chain-sdk && pnpm install && pnpm build",
-            "pnpm install --no-frozen-lockfile"
+            "pnpm install --no-frozen-lockfile",
+            "cd packages/cross-chain-sdk && pnpm install --no-frozen-lockfile && pnpm build"
           ]
         }
       }

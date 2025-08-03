@@ -1,5 +1,0 @@
-[build]
-command = "cd packages/cross-chain-sdk && pnpm install --no-frozen-lockfile && pnpm build"
-
-[deploy]
-startCommand = "pnpm start"
