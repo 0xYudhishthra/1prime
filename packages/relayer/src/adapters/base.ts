@@ -23,18 +23,18 @@ export abstract class BaseChainAdapter implements ChainAdapter {
 
   abstract verifyEscrow(
     orderHash: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<EscrowDetails>;
 
   abstract withdrawFromEscrow(
     orderHash: string,
     secret: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<string>;
 
   abstract cancelEscrow(
     orderHash: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<string>;
 
   abstract getBlockNumber(): Promise<number>;
@@ -44,7 +44,7 @@ export abstract class BaseChainAdapter implements ChainAdapter {
   abstract estimateGas(
     operation: string,
     params: any,
-    htlcContractAddress?: string
+    escrowAddress?: string
   ): Promise<number>;
 
   protected logOperation(
@@ -89,7 +89,7 @@ export abstract class BaseChainAdapter implements ChainAdapter {
       type: this.config.type,
       blockTime: this.config.blockTime,
       finalityBlocks: this.config.finalityBlocks,
-      // Note: HTLC contracts are deployed dynamically per swap
+      // Note: Escrow contracts are deployed dynamically per swap
     };
   }
 }

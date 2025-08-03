@@ -1,7 +1,16 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowRight, Smartphone, Zap, Globe } from 'lucide-react';
+import {
+  ArrowRight,
+  Smartphone,
+  Zap,
+  Globe,
+  Shield,
+  Lock,
+  ArrowDownUp,
+  CheckCircle2,
+} from 'lucide-react';
 
 export default function HomePage() {
   return (
@@ -12,15 +21,18 @@ export default function HomePage() {
           <h1 className="mb-6 text-5xl font-bold">
             Cross-Chain Swaps via <span className="underline">Voice</span>
           </h1>
-          <p className="mx-auto mb-8 max-w-2xl text-xl text-gray-600">
+          <p className="text-l mx-auto max-w-2xl text-gray-600">
             Swap tokens between EVM chains and NEAR protocol using 1inch Fusion+
-            atomic swaps. Just say "Hey Siri, swap my tokens" and we handle the
-            rest.
+          </p>
+          <p className="text-l mx-auto mb-8 max-w-2xl text-gray-600">
+            Just say{' '}
+            <span className="font-semibold">"Hey Siri, swap my tokens"</span>{' '}
+            and we handle the rest.
           </p>
 
-          <div className="mb-12 flex flex-col justify-center gap-4 sm:flex-row">
+          <div className="mb-8 flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="https://www.icloud.com/shortcuts/32de106a6daa493bb778d071d798ff6b"
+              href="https://www.icloud.com/shortcuts/70defed281024a5b9ba729f9594e386c"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -35,14 +47,14 @@ export default function HomePage() {
             <Link href="/auth/signup">
               <Button size="lg" variant="outline">
                 Try Web App
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>
 
           <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500 mb-10">
             <strong>Quick Start:</strong> Import the shortcut above, then say
-            <span className="mx-1 rounded bg-white px-2 py-1 font-mono">
+            <span className="mx-1 rounded bg-white px-1 py-1 font-mono font-bold">
               "Hey Siri, Login to 1Prime"
             </span>
           </div>
@@ -65,39 +77,38 @@ export default function HomePage() {
       </section>
 
       {/* Features */}
-      <section className="bg-gray-50 px-6 py-16">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-12 text-center text-3xl font-bold">Why 1Prime?</h2>
-          <div className="grid gap-8 md:grid-cols-3">
+      <section className="bg-gray-50 px-4 pt-6 pb-8">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="mb-4 text-center text-2xl font-bold">Why 1Prime?</h2>
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
-              <CardContent className="p-6 text-center">
-                <Smartphone className="mx-auto mb-4 h-12 w-12" />
-                <h3 className="mb-2 text-xl font-semibold">Voice-First UX</h3>
-                <p className="text-gray-600">
-                  Initiate cross-chain swaps using Siri. No complex interfaces
-                  or manual transaction signing.
+              <CardContent className="px-4 py-2 text-center">
+                <Smartphone className="mx-auto mb-2 h-8 w-8" />
+                <h3 className="mb-1 text-base font-semibold">Voice-First UX</h3>
+                <p className="text-xs text-gray-600">
+                  Swap across chains with Siri.
+                  <br />
+                  No complex UI or manual signing.
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-6 text-center">
-                <Zap className="mx-auto mb-4 h-12 w-12" />
-                <h3 className="mb-2 text-xl font-semibold">
+              <CardContent className="px-4 py-2 text-center">
+                <Zap className="mx-auto mb-2 h-8 w-8" />
+                <h3 className="mb-1 text-base font-semibold">
                   Intent-Based Swaps
                 </h3>
-                <p className="text-gray-600">
-                  Powered by 1inch Fusion+ for atomic, MEV-protected cross-chain
-                  transactions.
+                <p className="text-xs text-gray-600">
+                  1inch Fusion+ powers atomic, MEV-protected swaps.
                 </p>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-6 text-center">
-                <Globe className="mx-auto mb-4 h-12 w-12" />
-                <h3 className="mb-2 text-xl font-semibold">Multi-Chain</h3>
-                <p className="text-gray-600">
-                  Seamlessly swap between Ethereum, Arbitrum, Optimism, and NEAR
-                  protocol.
+              <CardContent className="px-4 py-2 text-center">
+                <Globe className="mx-auto mb-2 h-8 w-8" />
+                <h3 className="mb-1 text-base font-semibold">Multi-Chain</h3>
+                <p className="text-xs text-gray-600">
+                  Swap between Ethereum, Arbitrum, Optimism, and NEAR.
                 </p>
               </CardContent>
             </Card>
@@ -105,128 +116,175 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Technical Flow */}
+      {/* How Cross-Chain Swaps Work */}
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-4xl">
-          <h2 className="mb-12 text-center text-3xl font-bold">
-            How It Works Under The Hood
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-4 text-center text-3xl font-bold">
+            How Cross-Chain Swaps Work
           </h2>
-          <div className="space-y-6">
-            {[
-              {
-                step: 1,
-                title: 'Generate Random Number',
-                desc: 'Frontend creates cryptographic randomness',
-                actor: 'Frontend',
-              },
-              {
-                step: 2,
-                title: 'Hash with Keccak-256',
-                desc: "User's wallet signs the hash commitment",
-                actor: 'Frontend',
-              },
-              {
-                step: 3,
-                title: 'Generate Order Details',
-                desc: 'Send user address, amount, tokens, chains, and hash',
-                actor: 'Frontend',
-              },
-              {
-                step: 4,
-                title: 'Create Fusion+ Order',
-                desc: 'Relayer patches 1inch SDK to create atomic swap order',
-                actor: 'Relayer',
-              },
-              {
-                step: 5,
-                title: 'Return Order Hash',
-                desc: 'Fusion+ order returned with tracking hash',
-                actor: 'Relayer',
-              },
-              {
-                step: 6,
-                title: 'Sign Transaction',
-                desc: 'Smart wallet signs the Fusion+ order',
-                actor: 'Frontend',
-              },
-              {
-                step: 7,
-                title: 'Submit to Relayer',
-                desc: 'Signed order sent back to relayer network',
-                actor: 'Frontend',
-              },
-              {
-                step: 8,
-                title: 'Accept Order',
-                desc: 'Resolver backend polls and confirms the order',
-                actor: 'Resolver',
-              },
-              {
-                step: 9,
-                title: 'Poll Order Status',
-                desc: 'Frontend checks order status every 2 seconds',
-                actor: 'Frontend',
-              },
-              {
-                step: 10,
-                title: 'Deploy Escrows',
-                desc: 'Resolver deploys source and destination chain escrows',
-                actor: 'Resolver',
-              },
-              {
-                step: 11,
-                title: 'Wait for Secret',
-                desc: 'Relayer validates contracts and updates state',
-                actor: 'Relayer',
-              },
-              {
-                step: 12,
-                title: 'Reveal Secret',
-                desc: 'Frontend sends original random number to unlock',
-                actor: 'Frontend',
-              },
-              {
-                step: 13,
-                title: 'Unlock Funds',
-                desc: 'Resolver broadcasts to network and releases funds',
-                actor: 'Resolver',
-              },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="flex gap-4 rounded-lg border border-gray-200 p-4"
-              >
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-black text-sm font-bold text-white">
-                  {item.step}
+          <p className="mx-auto mb-12 max-w-3xl text-center text-gray-600">
+            Powered by 1inch Fusion+ protocol with atomic swaps
+          </p>
+
+          {/* Visual Flow Diagram */}
+          <div className="relative mb-16">
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+              {/* User Section */}
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blue-100">
+                  <Smartphone className="h-10 w-10 text-blue-700" />
+                </div>
+                <h3 className="mb-1 text-lg font-semibold">You</h3>
+                <p className="text-sm text-gray-600">Initiate swap via Siri</p>
+              </div>
+
+              {/* Relayer & Fusion+ */}
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-purple-100">
+                  <ArrowDownUp className="h-10 w-10 text-purple-700" />
+                </div>
+                <h3 className="mb-1 text-lg font-semibold">1inch Fusion+</h3>
+                <p className="text-sm text-gray-600">
+                  Creates atomic swap order
+                </p>
+              </div>
+
+              {/* Resolver Network */}
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+                  <Shield className="h-10 w-10 text-green-700" />
+                </div>
+                <h3 className="mb-1 text-lg font-semibold">Resolver Network</h3>
+                <p className="text-sm text-gray-600">
+                  Executes cross-chain swap
+                </p>
+              </div>
+            </div>
+
+            {/* Connection Arrows */}
+            <div className="absolute top-10 right-1/3 left-1/3 hidden md:block">
+              <div className="flex items-center justify-between">
+                <ArrowRight className="h-6 w-6 text-gray-400" />
+                <ArrowRight className="h-6 w-6 text-gray-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Swap Process Steps */}
+          <div className="mx-auto max-w-3xl space-y-6">
+            {/* <div className="mb-8 text-center">
+              <h3 className="mb-2 text-xl font-semibold">The Swap Process</h3>
+              <p className="text-gray-600">
+                Trustless, atomic, and MEV-protected
+              </p>
+            </div> */}
+
+            <div className="space-y-8">
+              {/* Step 1 */}
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-black font-bold text-white">
+                  1
                 </div>
                 <div className="flex-1">
-                  <div className="mb-1 flex items-center gap-2">
-                    <h3 className="font-semibold">{item.title}</h3>
-                    <span className="rounded bg-gray-100 px-2 py-1 text-xs">
-                      {item.actor}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">{item.desc}</p>
+                  <h4 className="mb-1 font-semibold">
+                    Cryptographic Commitment
+                  </h4>
+                  <p className="ml-1 text-sm text-gray-600">
+                    Your device generates a secure random secret and creates a
+                    hash commitment. This ensures the swap can only be completed
+                    by you.
+                  </p>
                 </div>
               </div>
-            ))}
+
+              {/* Step 2 */}
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-black font-bold text-white">
+                  2
+                </div>
+                <div className="flex-1">
+                  <h4 className="mb-1 font-semibold">
+                    1inch Fusion+ Order Creation
+                  </h4>
+                  <p className="ml-1 text-sm text-gray-600">
+                    The relayer uses 1inch Fusion+ SDK to create an atomic swap
+                    order with your commitment. This order is MEV-protected and
+                    ensures best execution.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-black font-bold text-white">
+                  3
+                </div>
+                <div className="flex-1">
+                  <h4 className="mb-1 font-semibold">
+                    Resolver Network Acceptance
+                  </h4>
+                  <p className="ml-1 text-sm text-gray-600">
+                    Professional resolvers compete to fill your order. They
+                    deploy secure escrow contracts on both source and
+                    destination chains.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 4 */}
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-black font-bold text-white">
+                  4
+                </div>
+                <div className="flex-1">
+                  <h4 className="mb-1 font-semibold">
+                    Secret Reveal & Settlement
+                  </h4>
+                  <p className="ml-1 text-sm text-gray-600">
+                    Once escrows are verified, you reveal your secret to unlock
+                    the funds. The resolver completes the cross-chain transfer
+                    atomically.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* Security Features */}
+          {/* <div className="mx-auto mt-12 grid max-w-3xl grid-cols-1 gap-6 md:grid-cols-2">
+            <Card className="border-gray-200">
+              <CardContent className="p-6">
+                <Lock className="mb-3 h-8 w-8 text-gray-700" />
+                <h4 className="mb-2 font-semibold">Atomic Swaps</h4>
+                <p className="text-sm text-gray-600">
+                  Either the entire swap completes or nothing happens. Your
+                  funds are never at risk of partial execution.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-gray-200">
+              <CardContent className="p-6">
+                <CheckCircle2 className="mb-3 h-8 w-8 text-gray-700" />
+                <h4 className="mb-2 font-semibold">MEV Protection</h4>
+                <p className="text-sm text-gray-600">
+                  1inch Fusion+ protocol ensures you get fair execution prices
+                  without MEV exploitation.
+                </p>
+              </CardContent>
+            </Card>
+          </div> */}
         </div>
       </section>
 
       {/* CTA */}
-      <section className="bg-black px-6 py-16 text-white">
+      <section className="mt-2 bg-black px-6 py-12 text-white">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="mb-4 text-3xl font-bold">
-            Ready to Try Cross-Chain Voice Swaps?
+          <h2 className="mb-4 text-2xl font-bold">
+            Ready to try Cross-Chain Swaps via Voice?
           </h2>
-          <p className="mb-8 text-gray-300">
-            This is a proof-of-concept demonstrating intent-based atomic swaps
-            between EVM chains and NEAR.
-          </p>
           <div className="flex flex-col justify-center gap-4 sm:flex-row">
             <a
-              href="https://www.icloud.com/shortcuts/32de106a6daa493bb778d071d798ff6b"
+              href="https://www.icloud.com/shortcuts/70defed281024a5b9ba729f9594e386c"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -265,7 +323,17 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-gray-200 px-6 py-8">
         <div className="mx-auto max-w-6xl text-center text-gray-500">
-          <p>1Prime - Cross-Chain Swaps via Voice • Proof of Concept</p>
+          <p className="italic">
+            1Prime • Cross-Chain Swaps via Voice •{' '}
+            <a
+              href="https://github.com/0xYudhishthra/1prime"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-black"
+            >
+              GitHub
+            </a>
+          </p>
         </div>
       </footer>
     </div>

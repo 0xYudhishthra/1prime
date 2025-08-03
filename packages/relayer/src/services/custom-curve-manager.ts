@@ -42,29 +42,26 @@ export class CustomCurveManager extends EventEmitter {
    * Based on whitepaper Section 2.3.4: "price curve is adjusted based on market conditions"
    */
   initializeCustomCurve(order: FusionOrderExtended): CustomCurveState {
-    const points = order.enhancedAuctionDetails?.points || [];
-
-    // If no custom points, create default linear curve
-    const curvePoints =
-      points.length > 0 ? points : this.createDefaultLinearCurve();
+    // Simplified curve - no auctions, use default values
+    const curvePoints = this.createDefaultLinearCurve();
 
     const curveState: CustomCurveState = {
       orderHash: order.orderHash,
       points: curvePoints,
-      startTime: order.auctionStartTime,
-      duration: order.auctionDuration,
-      originalRate: order.initialRateBump,
+      startTime: Date.now(), // Use current time as fallback
+      duration: 300000, // Default 5 minutes
+      originalRate: order.initialRateBump || 0,
       gasAdjustments: [],
       isActive: true,
     };
 
     this.curveStates.set(order.orderHash, curveState);
 
-    this.logger.info("Custom curve initialized", {
+    this.logger.info("Custom curve initialized (simplified)", {
       orderHash: order.orderHash,
       pointsCount: curvePoints.length,
-      duration: order.auctionDuration,
-      hasCustomPoints: points.length > 0,
+      duration: curveState.duration,
+      hasCustomPoints: false,
     });
 
     return curveState;

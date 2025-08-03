@@ -2,19 +2,19 @@
 
 pragma solidity 0.8.23;
 
-import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable} from 'openzeppelin-contracts/contracts/access/Ownable.sol';
 
-import {IOrderMixin} from "limit-order-protocol/contracts/interfaces/IOrderMixin.sol";
-import {TakerTraits} from "limit-order-protocol/contracts/libraries/TakerTraitsLib.sol";
+import {IOrderMixin} from 'limit-order-protocol/contracts/interfaces/IOrderMixin.sol';
+import {TakerTraits} from 'limit-order-protocol/contracts/libraries/TakerTraitsLib.sol';
 
-import {IResolverExample} from "../lib/cross-chain-swap/contracts/interfaces/IResolverExample.sol";
-import {RevertReasonForwarder} from "../lib/cross-chain-swap/lib/solidity-utils/contracts/libraries/RevertReasonForwarder.sol";
-import {IEscrowFactory} from "../lib/cross-chain-swap/contracts/interfaces/IEscrowFactory.sol";
-import {IBaseEscrow} from "../lib/cross-chain-swap/contracts/interfaces/IBaseEscrow.sol";
-import {TimelocksLib, Timelocks} from "../lib/cross-chain-swap/contracts/libraries/TimelocksLib.sol";
-import {Address} from "solidity-utils/contracts/libraries/AddressLib.sol";
-import {IEscrow} from "../lib/cross-chain-swap/contracts/interfaces/IEscrow.sol";
-import {ImmutablesLib} from "../lib/cross-chain-swap/contracts/libraries/ImmutablesLib.sol";
+import {IResolverExample} from '../lib/cross-chain-swap/contracts/interfaces/IResolverExample.sol';
+import {RevertReasonForwarder} from '../lib/cross-chain-swap/lib/solidity-utils/contracts/libraries/RevertReasonForwarder.sol';
+import {IEscrowFactory} from '../lib/cross-chain-swap/contracts/interfaces/IEscrowFactory.sol';
+import {IBaseEscrow} from '../lib/cross-chain-swap/contracts/interfaces/IBaseEscrow.sol';
+import {TimelocksLib, Timelocks} from '../lib/cross-chain-swap/contracts/libraries/TimelocksLib.sol';
+import {Address} from 'solidity-utils/contracts/libraries/AddressLib.sol';
+import {IEscrow} from '../lib/cross-chain-swap/contracts/interfaces/IEscrow.sol';
+import {ImmutablesLib} from '../lib/cross-chain-swap/contracts/libraries/ImmutablesLib.sol';
 
 /**
  * @title Sample implementation of a Resolver contract for cross-chain swap.
@@ -53,12 +53,11 @@ contract Resolver is Ownable {
         TakerTraits takerTraits,
         bytes calldata args
     ) external payable onlyOwner {
-
         IBaseEscrow.Immutables memory immutablesMem = immutables;
         immutablesMem.timelocks = TimelocksLib.setDeployedAt(immutables.timelocks, block.timestamp);
         address computed = _FACTORY.addressOfEscrowSrc(immutablesMem);
 
-        (bool success,) = address(computed).call{value: immutablesMem.safetyDeposit}("");
+        (bool success, ) = address(computed).call{value: immutablesMem.safetyDeposit}('');
         if (!success) revert IBaseEscrow.NativeTokenSendingFailure();
 
         // _ARGS_HAS_TARGET = 1 << 251
@@ -70,14 +69,16 @@ contract Resolver is Ownable {
     /**
      * @notice See {IResolverExample-deployDst}.
      */
-    function deployDst(IBaseEscrow.Immutables calldata dstImmutables, uint256 srcCancellationTimestamp) external onlyOwner payable {
+    function deployDst(
+        IBaseEscrow.Immutables calldata dstImmutables,
+        uint256 srcCancellationTimestamp
+    ) external payable onlyOwner {
         _FACTORY.createDstEscrow{value: msg.value}(dstImmutables, srcCancellationTimestamp);
     }
 
     function withdraw(IEscrow escrow, bytes32 secret, IBaseEscrow.Immutables calldata immutables) external {
         escrow.withdraw(secret, immutables);
     }
-
 
     function cancel(IEscrow escrow, IBaseEscrow.Immutables calldata immutables) external {
         escrow.cancel(immutables);
@@ -91,7 +92,7 @@ contract Resolver is Ownable {
         if (targets.length != arguments.length) revert LengthMismatch();
         for (uint256 i = 0; i < length; ++i) {
             // solhint-disable-next-line avoid-low-level-calls
-            (bool success,) = targets[i].call(arguments[i]);
+            (bool success, ) = targets[i].call(arguments[i]);
             if (!success) RevertReasonForwarder.reRevert();
         }
     }

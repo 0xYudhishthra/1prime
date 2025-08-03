@@ -1,8 +1,6 @@
 'use client';
 
-import type React from 'react';
-
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -41,7 +39,7 @@ export default function SignInPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ email, password }),
-        }
+        },
       );
 
       if (response.ok) {
@@ -75,12 +73,12 @@ export default function SignInPage() {
       <div className="flex min-h-screen items-center justify-center bg-white p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Sign In</CardTitle>
-            <CardDescription>
-              Access your cross-chain wallet and view your token balances.
+            <CardTitle className="text-2xl">Welcome Back</CardTitle>
+            <CardDescription className="mt-[-6px]">
+              Access your cross-chain wallet
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-[-4px]">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -128,7 +126,7 @@ export default function SignInPage() {
             <div className="mt-4 text-center">
               <Link href="/">
                 <Button variant="outline" size="sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4" />
                   Back to Home
                 </Button>
               </Link>

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,8 +27,14 @@ export function Navbar() {
     return (
       <header className="border-b border-gray-200 px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link href="/" className="text-2xl font-bold">
-            1Prime
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/logo.png"
+              alt="1Prime Logo"
+              width={120}
+              height={40}
+              className="h-8 w-auto"
+            />
           </Link>
           <div className="flex gap-4">
             <div className="h-9 w-16 animate-pulse rounded bg-gray-200" />
@@ -41,8 +48,14 @@ export function Navbar() {
   return (
     <header className="border-b border-gray-200 px-6 py-4">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
-        <Link href="/" className="text-2xl font-bold">
-          1Prime
+        <Link href="/" className="flex items-center">
+          <Image
+            src="/logo.png"
+            alt="1Prime Logo"
+            width={120}
+            height={40}
+            className="h-8 w-auto"
+          />
         </Link>
 
         <div className="flex items-center gap-4">
@@ -55,29 +68,35 @@ export function Navbar() {
                 </Button>
               </Link>
 
-              <Link href="/deposit">
+              {/* <Link href="/deposit">
                 <Button variant="outline" size="sm">
                   Deposit
                 </Button>
-              </Link>
+              </Link> */}
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <User className="mr-2 h-4 w-4" />
-                    Account
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
-                    onClick={handleLogout}
-                    className="text-red-600"
+              <div className="relative">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <User className="mr-1 h-4 w-4" />
+                      Account
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="absolute right-0 z-50 w-48"
+                    sideOffset={8}
                   >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="text-red-600"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </>
           ) : (
             <>

@@ -4,7 +4,7 @@ import {
   FusionOrder,
   FusionOrderExtended,
   OrderStatus,
-  ResolverBidRequest,
+  TimelockPhase,
   SecretRevealRequest,
   RelayerStatus,
   HealthCheckResponse,
@@ -17,6 +17,7 @@ import {
 import { OrderManager } from "./order-manager";
 import { EscrowVerifier } from "./escrow-verifier";
 import { SecretManager, SecretRevealConditions } from "./secret-manager";
+import { OnChainVerifier, VerificationRequest } from "./on-chain-verifier";
 import { TimelockManager } from "./timelock-manager";
 import { ChainAdapterFactory } from "../adapters";
 import {
@@ -25,6 +26,37 @@ import {
   getEscrowFactoryAddress,
   getChainNameFromChainId,
 } from "../config/chains";
+import {
+  getTokenAddress,
+  isTokenSupportedOnChain,
+  TOKEN_CONFIGS,
+} from "../config/tokens";
+import { getRandomValues } from "crypto";
+
+// Helper function to determine if a chain is EVM-based
+function isEvmChain(chainId: string): boolean {
+  const evmChains = [
+    "ethereum",
+    "eth-sepolia",
+    "base",
+    "bsc",
+    "polygon",
+    "arbitrum",
+    "11155111",
+    "1",
+    "8453",
+    "56",
+    "137",
+    "42161",
+  ];
+  return evmChains.includes(chainId.toLowerCase());
+}
+
+// Helper function to determine if a chain is NEAR-based
+function isNearChain(chainId: string): boolean {
+  const nearChains = ["near", "near-testnet", "397", "398"];
+  return nearChains.includes(chainId.toLowerCase());
+}
 import { DatabaseService } from "./database";
 import { OneInchApiService } from "./1inch-api";
 import { SDKOrderMapper } from "../utils/sdk-mapper";
@@ -64,7 +96,12 @@ export class RelayerService extends EventEmitter {
   private escrowVerifier: EscrowVerifier;
   private secretManager: SecretManager;
   private timelockManager: TimelockManager;
+  private onChainVerifier: OnChainVerifier;
   private webSocketService?: any; // Optional WebSocket service
+
+  // NEAR address mapping for SDK compatibility
+  private nearAddressMapping: Map<string, string> = new Map(); // placeholder -> original NEAR address
+  private reverseNearMapping: Map<string, string> = new Map(); // original NEAR -> placeholder
 
   private isInitialized = false;
   private healthCheckInterval?: NodeJS.Timeout;
@@ -100,6 +137,7 @@ export class RelayerService extends EventEmitter {
     this.escrowVerifier = new EscrowVerifier(logger, oneInchApiService);
     this.secretManager = new SecretManager(logger);
     this.timelockManager = new TimelockManager(logger);
+    this.onChainVerifier = new OnChainVerifier(logger);
 
     this.setupEventHandlers();
   }
@@ -109,6 +147,123 @@ export class RelayerService extends EventEmitter {
    */
   setWebSocketService(webSocketService: any): void {
     this.webSocketService = webSocketService;
+  }
+
+  // Getter for database service (for debugging purposes)
+  get dbService() {
+    return this.databaseService;
+  }
+
+  /**
+   * Check if an address is a NEAR address format
+   */
+  private isNearAddress(address: string): boolean {
+    // NEAR addresses can be:
+    // 1. Named accounts: ending with .near or .testnet
+    // 2. Implicit accounts: 64-character hex strings
+    return (
+      address.includes(".near") ||
+      address.includes(".testnet") ||
+      (address.length === 64 && /^[0-9a-fA-F]+$/.test(address))
+    );
+  }
+
+  /**
+   * Generate a random EVM address as placeholder for NEAR addresses
+   */
+  private generateEvmPlaceholder(): string {
+    // Generate 20 random bytes and convert to hex
+    const randomBytes = new Uint8Array(20);
+    getRandomValues(randomBytes);
+    return (
+      "0x" +
+      Array.from(randomBytes)
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("")
+    );
+  }
+
+  /**
+   * Convert NEAR address to EVM placeholder, maintaining bidirectional mapping
+   */
+  private convertNearToEvmPlaceholder(nearAddress: string): string {
+    // Check if we already have a mapping for this NEAR address
+    const existingPlaceholder = this.reverseNearMapping.get(nearAddress);
+    if (existingPlaceholder) {
+      return existingPlaceholder;
+    }
+
+    // Generate new placeholder
+    let placeholder = this.generateEvmPlaceholder();
+
+    // Ensure uniqueness (very unlikely collision, but just in case)
+    while (this.nearAddressMapping.has(placeholder)) {
+      placeholder = this.generateEvmPlaceholder();
+    }
+
+    // Store bidirectional mapping
+    this.nearAddressMapping.set(placeholder, nearAddress);
+    this.reverseNearMapping.set(nearAddress, placeholder);
+
+    this.logger.debug("Generated EVM placeholder for NEAR address", {
+      originalNear: nearAddress,
+      evmPlaceholder: placeholder,
+    });
+
+    return placeholder;
+  }
+
+  /**
+   * Get original NEAR address from EVM placeholder
+   */
+  private getOriginalNearAddress(evmPlaceholder: string): string | null {
+    return this.nearAddressMapping.get(evmPlaceholder) || null;
+  }
+
+  /**
+   * Process address: convert NEAR to EVM placeholder if needed
+   */
+  private processAddress(address: string): string {
+    if (this.isNearAddress(address)) {
+      return this.convertNearToEvmPlaceholder(address);
+    }
+    return address;
+  }
+
+  /**
+   * Get address mappings for an order (useful for resolvers)
+   */
+  async getAddressMappings(orderHash: string): Promise<{
+    originalAddresses?: any;
+    processedAddresses?: any;
+    nearAddressMappings?: Record<string, string>;
+  } | null> {
+    try {
+      const orderRecord = await this.databaseService.getOrder(orderHash);
+      if (!orderRecord) {
+        return null;
+      }
+
+      const extendedRecord = orderRecord as FusionOrderExtended;
+      return {
+        originalAddresses: extendedRecord.originalAddresses,
+        processedAddresses: extendedRecord.processedAddresses,
+        nearAddressMappings: extendedRecord.nearAddressMappings,
+      };
+    } catch (error) {
+      this.logger.error("Failed to get address mappings", {
+        error: (error as Error).message,
+        orderHash,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Resolve EVM placeholder to original NEAR address
+   */
+  resolveNearAddress(evmPlaceholder: string): string | null {
+    return this.getOriginalNearAddress(evmPlaceholder);
   }
 
   async initialize(): Promise<void> {
@@ -126,6 +281,9 @@ export class RelayerService extends EventEmitter {
 
       // Initialize timelock manager
       await this.timelockManager.initialize();
+
+      // Restore active orders from database
+      await this.restoreStateFromDatabase();
 
       // Start health checks
       this.startHealthChecks();
@@ -206,6 +364,11 @@ export class RelayerService extends EventEmitter {
 
       //Get the NetworkEnum from the chain id
       const chainIdToNetwork = {
+        "1": NetworkEnum.ETHEREUM,
+        "8453": NetworkEnum.COINBASE, // Base
+        "56": NetworkEnum.BINANCE, // BSC
+        "137": NetworkEnum.POLYGON,
+        "42161": NetworkEnum.ARBITRUM,
         "11155111": NetworkEnum.ETH_SEPOLIA,
         "397": NetworkEnum.NEAR,
         "398": NetworkEnum.NEAR_TESTNET,
@@ -218,28 +381,148 @@ export class RelayerService extends EventEmitter {
         dstChainId as keyof typeof chainIdToNetwork
       ] || NetworkEnum.ETHEREUM) as any;
 
-      //Get the appropriate escrow factory address for the source chain
-      const chainName = getChainNameFromChainId(srcChainId);
-      const escrowFactoryAddress = getEscrowFactoryAddress(chainName as string);
+      // Convert chain IDs to chain names for proper token lookup
+      const srcChainName = getChainNameFromChainId(srcChainId) || srcChainId;
+      const dstChainName = getChainNameFromChainId(dstChainId) || dstChainId;
 
-      console.log("escrowFactoryAddress", escrowFactoryAddress);
+      //Get the appropriate escrow factory address for the source chain
+      const escrowFactoryAddress = getEscrowFactoryAddress(
+        srcChainName as string
+      );
+
+      // Validate token support on respective chains using chain names (with fallback to chain IDs)
+      if (
+        !isTokenSupportedOnChain(params.fromToken, srcChainName) &&
+        !isTokenSupportedOnChain(params.fromToken, srcChainId)
+      ) {
+        throw new Error(
+          `Token '${params.fromToken}' not supported on chain '${srcChainName}' (${srcChainId})`
+        );
+      }
+      if (
+        !isTokenSupportedOnChain(params.toToken, dstChainName) &&
+        !isTokenSupportedOnChain(params.toToken, dstChainId)
+      ) {
+        throw new Error(
+          `Token '${params.toToken}' not supported on chain '${dstChainName}' (${dstChainId})`
+        );
+      }
+
+      // Resolve token addresses based on chain names (with fallback to chain IDs)
+      let sourceTokenAddress: string;
+      try {
+        sourceTokenAddress = getTokenAddress(params.fromToken, srcChainName);
+      } catch {
+        sourceTokenAddress = getTokenAddress(params.fromToken, srcChainId);
+      }
+
+      let destinationTokenAddress: string;
+      try {
+        destinationTokenAddress = getTokenAddress(params.toToken, dstChainName);
+      } catch {
+        destinationTokenAddress = getTokenAddress(params.toToken, dstChainId);
+      }
+
+      // Process addresses: convert NEAR addresses to EVM placeholders for SDK compatibility
+      const processedUserSrcAddress = this.processAddress(
+        params.userSrcAddress
+      );
+      const processedUserDstAddress = this.processAddress(
+        params.userDstAddress
+      );
+      const processedFromToken = this.processAddress(sourceTokenAddress);
+      const processedToToken = this.processAddress(destinationTokenAddress);
+      const processedEscrowFactory = this.processAddress(escrowFactoryAddress);
+
+      this.logger.debug("Address and token processing completed", {
+        originalUserSrcAddress: params.userSrcAddress,
+        processedUserSrcAddress,
+        originalUserDstAddress: params.userDstAddress,
+        processedUserDstAddress,
+        fromTokenSymbol: params.fromToken,
+        sourceTokenAddress,
+        processedFromToken,
+        toTokenSymbol: params.toToken,
+        destinationTokenAddress,
+        processedToToken,
+        originalEscrowFactory: escrowFactoryAddress,
+        processedEscrowFactory,
+      });
 
       // Create hash lock from the provided hash
       const hashLock = HashLock.fromString(params.secretHash);
 
-      const order = CrossChainOrder.new(
-        new Address(escrowFactoryAddress),
-        {
-          salt: randBigInt(1000n),
-          maker: params.userAddress,
-          makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
-          takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
-          makerAsset: new Address(params.fromToken),
-          takerAsset: new Address(params.toToken),
-        },
-        {
-          hashLock,
-          timeLocks: TimeLocks.new({
+      // Determine which SDK method to use based on chain types
+      const srcIsEvm = isEvmChain(srcChainId);
+      const dstIsNear = isNearChain(dstChainId);
+
+      this.logger.info("Chain type detection", {
+        srcChainId,
+        dstChainId,
+        srcIsEvm,
+        dstIsNear,
+        sdkMethod:
+          srcIsEvm && dstIsNear
+            ? "CrossChainOrder.new"
+            : "CrossChainOrder.new_near",
+      });
+
+      let order;
+
+      if (srcIsEvm && dstIsNear) {
+        // EVM to NEAR: use standard CrossChainOrder.new
+        order = CrossChainOrder.new(
+          new Address(processedEscrowFactory),
+          {
+            salt: randBigInt(1000n),
+            maker: new Address(processedUserSrcAddress),
+            makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
+            takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
+            makerAsset: new Address(processedFromToken),
+            takerAsset: new Address(processedToToken),
+          },
+          {
+            hashLock,
+            timeLocks: TimeLocks.new({
+              srcWithdrawal: 300n, // 5 minutes finality lock
+              srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              srcCancellation: 1800n, // 30 minutes cancellation
+              srcPublicCancellation: 3600n, // 1 hour public cancellation
+              dstWithdrawal: 300n, // 5 minutes finality lock
+              dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              dstCancellation: 1800n, // 30 minutes cancellation
+            }),
+            srcChainId: srcChain,
+            dstChainId: dstChain,
+            srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+            dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+          },
+          {
+            auction: new AuctionDetails({
+              initialRateBump: 1000, // 10% initial rate bump
+              points: [], // Custom auction curve points (empty for default)
+              duration: 120n, // 2 minutes auction duration
+              startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
+            }),
+            whitelist: [
+              {
+                address: new Address(processedEscrowFactory),
+                allowFrom: 0n,
+              },
+            ],
+            resolvingStartTime: 0n, // Immediate resolving
+          },
+          {
+            nonce: randBigInt(UINT_40_MAX),
+            allowPartialFills: false, // Single fill for now
+            allowMultipleFills: false, // Single fill for now
+          }
+        );
+      } else {
+        console.log("hashLock", hashLock);
+        console.log(
+          "timeLocks",
+          TimeLocks.new({
             srcWithdrawal: 300n, // 5 minutes finality lock
             srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
             srcCancellation: 1800n, // 30 minutes cancellation
@@ -247,33 +530,64 @@ export class RelayerService extends EventEmitter {
             dstWithdrawal: 300n, // 5 minutes finality lock
             dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
             dstCancellation: 1800n, // 30 minutes cancellation
-          }),
-          srcChainId: srcChain,
-          dstChainId: dstChain,
-          srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
-          dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
-        },
-        {
-          auction: new AuctionDetails({
-            initialRateBump: 1000, // 10% initial rate bump
-            points: [], // Custom auction curve points (empty for default)
-            duration: 120n, // 2 minutes auction duration
-            startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
-          }),
-          whitelist: [
-            {
-              address: new Address(escrowFactoryAddress),
-              allowFrom: 0n,
-            },
-          ],
-          resolvingStartTime: 0n, // Immediate resolving
-        },
-        {
-          nonce: randBigInt(UINT_40_MAX),
-          allowPartialFills: false, // Single fill for now
-          allowMultipleFills: false, // Single fill for now
-        }
-      );
+          })
+        );
+        console.log("srcChain", srcChain);
+        console.log("dstChain", dstChain);
+        console.log("srcSafetyDeposit", parseUnits("0.001", 18));
+        console.log("dstSafetyDeposit", parseUnits("0.001", 18));
+        console.log("escrowFactory", processedEscrowFactory);
+        console.log("userSrcAddress", processedUserSrcAddress);
+        console.log("userDstAddress", processedUserDstAddress);
+        // All other cases (NEAR to EVM, NEAR to NEAR, etc.): use CrossChainOrder.new_near
+        order = CrossChainOrder.new(
+          new Address(processedEscrowFactory),
+          {
+            maker: new Address(processedUserSrcAddress),
+            makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
+            takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
+            makerAsset: new Address(processedFromToken),
+            takerAsset: new Address(processedToToken),
+          },
+          {
+            hashLock,
+            timeLocks: TimeLocks.new({
+              srcWithdrawal: 300n, // 5 minutes finality lock
+              srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              srcCancellation: 1800n, // 30 minutes cancellation
+              srcPublicCancellation: 3600n, // 1 hour public cancellation
+              dstWithdrawal: 300n, // 5 minutes finality lock
+              dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
+              dstCancellation: 1800n, // 30 minutes cancellation
+            }),
+            srcChainId: srcChain,
+            dstChainId: dstChain,
+            srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+            dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
+          },
+          {
+            auction: new AuctionDetails({
+              initialRateBump: 1000, // 10% initial rate bump
+              points: [], // Custom auction curve points (empty for default)
+              duration: 120n, // 2 minutes auction duration
+              startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
+            }),
+            whitelist: [
+              {
+                address: new Address(processedEscrowFactory),
+                allowFrom: 0n,
+              },
+            ],
+            resolvingStartTime: 0n, // Immediate resolving
+          },
+          {
+            nonce: randBigInt(UINT_40_MAX),
+            allowPartialFills: false, // Single fill for now
+            allowMultipleFills: false, // Single fill for now
+          },
+          true
+        );
+      }
 
       console.log("order", order);
 
@@ -282,9 +596,14 @@ export class RelayerService extends EventEmitter {
 
       this.logger.info("Fusion order generated using SDK", {
         orderHash,
-        userAddress: params.userAddress,
+        userSrcAddress: params.userSrcAddress,
+        userDstAddress: params.userDstAddress,
         fromChain: params.fromChain,
         toChain: params.toChain,
+        fromTokenSymbol: params.fromToken,
+        toTokenSymbol: params.toToken,
+        sourceTokenAddress,
+        destinationTokenAddress,
         srcChainName: this.getChainNameFromId(Number(srcChainId)),
         dstChainName: this.getChainNameFromId(Number(dstChainId)),
         srcChainId,
@@ -293,17 +612,36 @@ export class RelayerService extends EventEmitter {
         takingAmount: order.takingAmount.toString(),
       });
 
-      // Store the prepared order in database with full details
+      // Store the prepared order in database with full details including address mappings
       const orderDetails = {
-        userAddress: params.userAddress,
+        userSrcAddress: params.userSrcAddress,
+        userDstAddress: params.userDstAddress,
         amount: params.amount,
-        fromToken: params.fromToken,
-        toToken: params.toToken,
+        fromTokenSymbol: params.fromToken,
+        toTokenSymbol: params.toToken,
         fromChain: params.fromChain,
         toChain: params.toChain,
         secretHash: params.secretHash,
         srcChainId,
         dstChainId,
+        // Store original addresses and resolved token addresses
+        originalAddresses: {
+          userSrcAddress: params.userSrcAddress,
+          userDstAddress: params.userDstAddress,
+          sourceTokenAddress,
+          destinationTokenAddress,
+          escrowFactory: escrowFactoryAddress,
+        },
+        // Store processed addresses used in SDK
+        processedAddresses: {
+          userSrcAddress: processedUserSrcAddress,
+          userDstAddress: processedUserDstAddress,
+          fromToken: processedFromToken,
+          toToken: processedToToken,
+          escrowFactory: processedEscrowFactory,
+        },
+        // Store address mappings for lookup
+        nearAddressMappings: Object.fromEntries(this.nearAddressMapping),
       };
 
       await this.databaseService.storePreparedOrder(
@@ -314,7 +652,10 @@ export class RelayerService extends EventEmitter {
 
       this.logger.info("Order prepared and stored", {
         orderHash,
-        userAddress: params.userAddress,
+        userSrcAddress: params.userSrcAddress,
+        userDstAddress: params.userDstAddress,
+        fromTokenSymbol: params.fromToken,
+        toTokenSymbol: params.toToken,
       });
 
       // Only return orderHash - full order details are stored in DB
@@ -411,6 +752,229 @@ export class RelayerService extends EventEmitter {
   }
 
   /**
+   * Transform complex SDK order object to flat FusionOrderExtended structure
+   */
+  private transformSDKOrderToFusionOrder(
+    sdkOrder: any,
+    orderHash: string,
+    orderDetails: any,
+    signature: string
+  ): FusionOrderExtended {
+    // Extract data from nested SDK structure
+    const innerOrder = sdkOrder.inner?.inner;
+    const fusionExtension = sdkOrder.inner?.fusionExtension;
+    const escrowExtension = sdkOrder.inner?.escrowExtension;
+
+    if (!innerOrder) {
+      throw new Error("Invalid SDK order structure: missing inner.inner data");
+    }
+
+    // Map chain IDs to chain names
+    const sourceChain = this.getChainNameFromId(
+      Number(orderDetails.srcChainId)
+    );
+    const destinationChain = this.getChainNameFromId(
+      Number(orderDetails.dstChainId)
+    );
+
+    // Use original addresses if available (for NEAR compatibility), otherwise fall back to processed/SDK values
+    const originalAddresses = orderDetails.originalAddresses || {};
+    const processedAddresses = orderDetails.processedAddresses || {};
+
+    // Restore address mappings from database
+    if (orderDetails.nearAddressMappings) {
+      for (const [placeholder, originalNear] of Object.entries(
+        orderDetails.nearAddressMappings
+      )) {
+        this.nearAddressMapping.set(
+          placeholder as string,
+          originalNear as string
+        );
+        this.reverseNearMapping.set(
+          originalNear as string,
+          placeholder as string
+        );
+      }
+    }
+
+    return {
+      // Basic order fields - use original addresses for final execution
+      orderHash,
+      maker:
+        originalAddresses.userSrcAddress ||
+        originalAddresses.userAddress ||
+        innerOrder.maker?.val ||
+        orderDetails.userSrcAddress ||
+        orderDetails.userAddress,
+      userSrcAddress:
+        originalAddresses.userSrcAddress ||
+        originalAddresses.userAddress ||
+        orderDetails.userSrcAddress ||
+        orderDetails.userAddress,
+      userDstAddress:
+        originalAddresses.userDstAddress ||
+        orderDetails.userDstAddress ||
+        orderDetails.userAddress, // Fallback to same address if not specified
+      sourceChain,
+      destinationChain,
+      sourceToken:
+        originalAddresses.fromToken ||
+        innerOrder.makerAsset?.val ||
+        orderDetails.fromToken,
+      destinationToken:
+        originalAddresses.toToken ||
+        innerOrder.takerAsset?.val ||
+        orderDetails.toToken,
+      sourceAmount: innerOrder.makingAmount || orderDetails.amount,
+      destinationAmount: innerOrder.takingAmount || orderDetails.amount,
+      secretHash:
+        fusionExtension?.hashLockInfo?.value || orderDetails.secretHash,
+      timeout: Date.now() + 3600000, // 1 hour from now
+
+      // Extract auction fields from SDK (even though we don't use auction logic)
+      auctionStartTime: fusionExtension?.auctionDetails?.startTime
+        ? Number(fusionExtension.auctionDetails.startTime)
+        : Date.now(),
+      auctionDuration: fusionExtension?.auctionDetails?.duration
+        ? Number(fusionExtension.auctionDetails.duration)
+        : 120,
+      initialRateBump: fusionExtension?.auctionDetails?.initialRateBump
+        ? Number(fusionExtension.auctionDetails.initialRateBump)
+        : 1000,
+      signature,
+      nonce: innerOrder._salt || "",
+      createdAt: Date.now(),
+
+      // SDK-specific fields
+      receiver: innerOrder.receiver?.val,
+      srcSafetyDeposit: fusionExtension?.srcSafetyDeposit,
+      dstSafetyDeposit: fusionExtension?.dstSafetyDeposit,
+      allowPartialFills: false, // Default
+      allowMultipleFills: false, // Default
+
+      // Extract timelock values from SDK order
+      detailedTimeLocks: this.extractTimeLocks(fusionExtension),
+
+      // Store both original and processed addresses for reference
+      originalAddresses,
+      processedAddresses,
+      nearAddressMappings: orderDetails.nearAddressMappings,
+
+      // Order state management
+      phase: "submitted",
+    };
+  }
+
+  /**
+   * Extract timelock values from SDK fusionExtension
+   */
+  private extractTimeLocks(fusionExtension: any): any {
+    // First, try to find parsed timelock values in the extension
+    if (fusionExtension?.parsedTimeLocks) {
+      return fusionExtension.parsedTimeLocks;
+    }
+
+    // If there's a timeLocks object with individual properties
+    if (
+      fusionExtension?.timeLocks &&
+      typeof fusionExtension.timeLocks === "object" &&
+      !fusionExtension.timeLocks.startsWith?.("0x")
+    ) {
+      return {
+        srcWithdrawal: Number(fusionExtension.timeLocks.srcWithdrawal || 300),
+        srcPublicWithdrawal: Number(
+          fusionExtension.timeLocks.srcPublicWithdrawal || 600
+        ),
+        srcCancellation: Number(
+          fusionExtension.timeLocks.srcCancellation || 1800
+        ),
+        srcPublicCancellation: Number(
+          fusionExtension.timeLocks.srcPublicCancellation || 3600
+        ),
+        dstWithdrawal: Number(fusionExtension.timeLocks.dstWithdrawal || 300),
+        dstPublicWithdrawal: Number(
+          fusionExtension.timeLocks.dstPublicWithdrawal || 600
+        ),
+        dstCancellation: Number(
+          fusionExtension.timeLocks.dstCancellation || 1800
+        ),
+      };
+    }
+
+    // If it's a hex string, parse it
+    if (
+      fusionExtension?.timeLocks &&
+      typeof fusionExtension.timeLocks === "string" &&
+      fusionExtension.timeLocks.startsWith("0x")
+    ) {
+      return this.parseTimeLockHex(fusionExtension.timeLocks);
+    }
+
+    // Fallback to reasonable defaults
+    return {
+      srcWithdrawal: 300, // 5 minutes
+      srcPublicWithdrawal: 600, // 10 minutes
+      srcCancellation: 1800, // 30 minutes
+      srcPublicCancellation: 3600, // 1 hour
+      dstWithdrawal: 300, // 5 minutes
+      dstPublicWithdrawal: 600, // 10 minutes
+      dstCancellation: 1800, // 30 minutes
+    };
+  }
+
+  /**
+   * Parse timelock hex string into individual values
+   * The hex string contains packed timelock values
+   */
+  private parseTimeLockHex(timeLockHex: string): any {
+    try {
+      // Remove 0x prefix
+      const hex = timeLockHex.slice(2);
+
+      // The hex string contains packed timelock values
+      // Each timelock is typically 4 bytes (8 hex chars)
+      // Format might be: srcWithdrawal(4) + srcPublicWithdrawal(4) + srcCancellation(4) + srcPublicCancellation(4) + dstWithdrawal(4) + dstPublicWithdrawal(4) + dstCancellation(4)
+
+      if (hex.length >= 56) {
+        // 7 * 8 = 56 hex chars for 7 values
+        const srcWithdrawal = parseInt(hex.slice(0, 8), 16);
+        const srcPublicWithdrawal = parseInt(hex.slice(8, 16), 16);
+        const srcCancellation = parseInt(hex.slice(16, 24), 16);
+        const srcPublicCancellation = parseInt(hex.slice(24, 32), 16);
+        const dstWithdrawal = parseInt(hex.slice(32, 40), 16);
+        const dstPublicWithdrawal = parseInt(hex.slice(40, 48), 16);
+        const dstCancellation = parseInt(hex.slice(48, 56), 16);
+
+        return {
+          srcWithdrawal,
+          srcPublicWithdrawal,
+          srcCancellation,
+          srcPublicCancellation,
+          dstWithdrawal,
+          dstPublicWithdrawal,
+          dstCancellation,
+        };
+      }
+    } catch (error) {
+      this.logger.warn("Failed to parse timelock hex, using defaults", {
+        timeLockHex,
+        error: (error as Error).message,
+      });
+    }
+
+    // Fallback to defaults if parsing fails
+    return {
+      srcWithdrawal: 300,
+      srcPublicWithdrawal: 600,
+      srcCancellation: 1800,
+      srcPublicCancellation: 3600,
+      dstWithdrawal: 300,
+      dstPublicWithdrawal: 600,
+      dstCancellation: 1800,
+    };
+  }
+
+  /**
    * Submit signed order and start relayer processing (Step 6)
    * Simplified: takes only orderHash and signature, retrieves order from database
    */
@@ -428,26 +992,57 @@ export class RelayerService extends EventEmitter {
         throw new Error(`Prepared order not found for hash: ${orderHash}`);
       }
 
-      const { fusionOrder, orderDetails } = preparedOrder;
-
-      console.log("preparedOrder", fusionOrder);
-      console.log("orderDetails", orderDetails);
+      const { fusionOrder: sdkOrder, orderDetails } = preparedOrder;
 
       this.logger.info("Retrieved prepared order for submission", {
         orderHash,
         userAddress: orderDetails.userAddress,
       });
 
-      // Update the order with signature and submission details
-      const completedOrder: FusionOrderExtended = {
-        ...fusionOrder,
-        signature,
-        phase: "submitted", // Order is submitted and waiting for resolver to claim it
-        createdAt: Date.now(),
-      };
+      // Transform SDK object to FusionOrderExtended
+      const completedOrder: FusionOrderExtended =
+        this.transformSDKOrderToFusionOrder(
+          sdkOrder,
+          orderHash,
+          orderDetails,
+          signature
+        );
 
       // Store in database
+      this.logger.info("Storing signed order in database", {
+        orderHash,
+        orderData: {
+          maker: completedOrder.maker,
+          userSrcAddress: completedOrder.userSrcAddress,
+          userDstAddress: completedOrder.userDstAddress,
+          sourceChain: completedOrder.sourceChain,
+          destinationChain: completedOrder.destinationChain,
+        },
+      });
+
       await this.databaseService.storeSignedOrder(completedOrder);
+
+      this.logger.info("Successfully stored signed order, verifying storage", {
+        orderHash,
+      });
+
+      // Verify the order was stored correctly
+      const storedOrder = await this.databaseService.getOrder(orderHash);
+      if (!storedOrder) {
+        this.logger.error(
+          "Order was not found after storage - this is a critical error!",
+          {
+            orderHash,
+          }
+        );
+        throw new Error("Failed to store order in database");
+      } else {
+        this.logger.info("Order successfully verified in database", {
+          orderHash,
+          storedOrderStatus: storedOrder.status,
+          storedOrderPhase: (storedOrder as any).phase,
+        });
+      }
 
       // Create order through OrderManager with the signed data
       const orderStatus =
@@ -488,7 +1083,7 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
-      // Verify resolver is registered and authorized
+      // Check resolver authorization for order state update
       const order = this.orderManager.getOrder(orderHash);
       if (!order) {
         throw new Error("Order not found");
@@ -500,35 +1095,35 @@ export class RelayerService extends EventEmitter {
         throw new Error("Resolver not authorized for this order");
       }
 
-      // Update order phase based on new state
-      if (newState === "waiting-for-secret") {
-        await this.orderManager.updateOrderPhase(
-          orderHash,
-          "waiting-for-secret"
-        );
-      } else if (newState === "completed") {
-        await this.orderManager.completeOrder(orderHash, "resolver-completed");
-      }
+      // Update order phase in database
+      await this.databaseService.updateOrderPhase(orderHash, newState);
 
-      // Update database
-      await this.databaseService.updateOrderStatus(
-        orderHash,
-        newState as any,
-        auction
-      );
+      // Update order status in database (for backward compatibility)
+      await this.databaseService.updateOrderStatus(orderHash, newState as any);
+
+      // Update order state in OrderManager if methods are available
+      if (newState === "completed") {
+        try {
+          await this.orderManager.completeOrder(
+            orderHash,
+            "resolver-completed"
+          );
+        } catch (error) {
+          this.logger.warn("OrderManager.completeOrder not implemented", {
+            orderHash,
+            error: (error as Error).message,
+          });
+        }
+      }
 
       // Broadcast state change via WebSocket
       if (this.webSocketService) {
-        this.webSocketService.broadcast(
-          "order_state_updated",
-          {
-            orderHash,
-            newState,
-            resolverAddress,
-            timestamp: Date.now(),
-          },
-          orderHash
-        );
+        this.webSocketService.broadcast("order_state_updated", {
+          orderHash,
+          newState,
+          resolverAddress,
+          timestamp: Date.now(),
+        });
       }
 
       this.logger.info("Order state updated", {
@@ -556,27 +1151,67 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
-      // Verify order exists and is in correct state
-      const order = this.orderManager.getOrder(claimRequest.orderHash);
-      if (!order) {
+      this.logger.info("Attempting to claim order", {
+        orderHash: claimRequest.orderHash,
+        resolverAddress: claimRequest.resolverAddress,
+      });
+
+      // Verify order exists and get current state from database (not memory)
+      const orderRecord = await this.databaseService.getOrder(
+        claimRequest.orderHash
+      );
+
+      this.logger.debug("Database lookup result", {
+        orderHash: claimRequest.orderHash,
+        found: !!orderRecord,
+        orderData: orderRecord
+          ? {
+              status: orderRecord.status,
+              phase: (orderRecord as any).phase,
+              createdAt: orderRecord.createdAt,
+            }
+          : null,
+      });
+
+      if (!orderRecord) {
+        // Let's also check if there are any orders in the database at all
+        const allOrders = await this.databaseService.getActiveOrders();
+        this.logger.warn("Order not found, checking all orders in database", {
+          requestedHash: claimRequest.orderHash,
+          totalOrdersInDB: allOrders.length,
+          orderHashes: allOrders.map(o => o.orderHash),
+        });
         throw new Error("Order not found");
       }
 
-      // Check if order is in submitted state (ready for claiming)
-      const extendedOrder = order as any; // Type assertion for extended order properties
-      if (extendedOrder.phase !== "submitted") {
+      // Check if order is in correct state for claiming (prevent double claiming)
+      const extendedRecord = orderRecord as FusionOrderExtended;
+      const currentPhase =
+        extendedRecord.phase ||
+        this.mapStatusToPhase(orderRecord.status as unknown as string);
+
+      if (currentPhase !== "submitted") {
         throw new Error(
-          `Order cannot be claimed in current state: ${extendedOrder.phase}`
+          `Order cannot be claimed in current state: ${currentPhase}. Only orders in 'submitted' state can be claimed.`
         );
       }
 
-      // Verify resolver is registered
-      // TODO: Add resolver verification logic
+      // Check if order already has an assigned resolver (additional protection)
+      if (
+        extendedRecord.assignedResolver &&
+        extendedRecord.assignedResolver !== claimRequest.resolverAddress
+      ) {
+        throw new Error(
+          `Order already claimed by resolver: ${extendedRecord.assignedResolver}`
+        );
+      }
 
-      // Update order state to claimed
-      // TODO: Implement proper order state management in DatabaseService
-      // TODO: Implement updateOrderPhase in OrderManager
-      // this.orderManager.updateOrderPhase(claimRequest.orderHash, "claimed");
+      // Atomically claim the order (prevents race conditions and double claiming)
+      await this.databaseService.claimOrderAtomic(
+        claimRequest.orderHash,
+        claimRequest.resolverAddress,
+        currentPhase
+      );
 
       // TODO: Store resolver assignment (in production, this should be in the database)
       // this.orderManager.assignResolver(claimRequest.orderHash, claimRequest.resolverAddress);
@@ -596,7 +1231,6 @@ export class RelayerService extends EventEmitter {
       this.logger.info("Order claimed by resolver", {
         orderHash: claimRequest.orderHash,
         resolverAddress: claimRequest.resolverAddress,
-        estimatedGas: claimRequest.estimatedGas,
       });
 
       return true;
@@ -631,9 +1265,79 @@ export class RelayerService extends EventEmitter {
         throw new Error("Only assigned resolver can confirm escrow deployment");
       }
 
-      // TODO: Verify escrow contract deployment on-chain
-      // For now, we trust the resolver's confirmation
-      // In production, this should verify the contract exists on-chain
+      // Verify escrow contract deployment on-chain
+      this.logger.info("Starting on-chain escrow verification", {
+        orderHash: confirmation.orderHash,
+        escrowAddress: confirmation.escrowAddress,
+        transactionHash: confirmation.transactionHash,
+        blockNumber: confirmation.blockNumber,
+        escrowType: confirmation.escrowType,
+      });
+
+      // Get chain information from the order
+      const chainId =
+        confirmation.escrowType === "src"
+          ? extendedOrder.sourceChain
+          : extendedOrder.destinationChain;
+
+      const expectedAmount =
+        confirmation.escrowType === "src"
+          ? extendedOrder.sourceAmount
+          : extendedOrder.destinationAmount;
+
+      // Create verification request
+      const verificationRequest: VerificationRequest = {
+        orderHash: confirmation.orderHash,
+        escrowAddress: confirmation.escrowAddress,
+        transactionHash: confirmation.transactionHash,
+        blockNumber: confirmation.blockNumber,
+        chainId: chainId || "1", // fallback to mainnet if not found
+        expectedAmount,
+      };
+
+      // Perform on-chain verification
+      const verificationResult =
+        await this.onChainVerifier.verifyEscrowDeployment(verificationRequest);
+
+      // Log verification results
+      this.logger.info("On-chain verification completed", {
+        orderHash: confirmation.orderHash,
+        escrowAddress: confirmation.escrowAddress,
+        result: {
+          exists: verificationResult.exists,
+          deployedAtTxHash: verificationResult.deployedAtTxHash,
+          hasUsdcBalance: verificationResult.hasUsdcBalance,
+          usdcBalance: verificationResult.usdcBalance,
+          errorsCount: verificationResult.errors.length,
+        },
+      });
+
+      // Check if verification passed
+      if (!verificationResult.exists) {
+        throw new Error(
+          `Escrow contract verification failed: ${verificationResult.errors.join(", ")}`
+        );
+      }
+
+      if (!verificationResult.deployedAtTxHash) {
+        this.logger.warn(
+          "Escrow deployment transaction verification failed, but contract exists",
+          {
+            orderHash: confirmation.orderHash,
+            errors: verificationResult.errors,
+          }
+        );
+        // Don't fail completely, but log the warning
+      }
+
+      // Note: We don't fail on USDC balance verification since the escrow might be funded later
+      if (!verificationResult.hasUsdcBalance) {
+        this.logger.warn("Escrow has no USDC balance yet", {
+          orderHash: confirmation.orderHash,
+          escrowAddress: confirmation.escrowAddress,
+          balance: verificationResult.usdcBalance,
+        });
+      }
 
       // Update order with escrow information
       const updateData: any = {};
@@ -647,14 +1351,25 @@ export class RelayerService extends EventEmitter {
         updateData.dstEscrowBlockNumber = confirmation.blockNumber;
       }
 
-      // Include phase update in the data
+      // Update phase based on escrow type
+      let newPhase: string;
       if (confirmation.escrowType === "src") {
-        updateData.phase = "src_escrow_deployed";
+        newPhase = "src_escrow_deployed";
       } else if (confirmation.escrowType === "dst") {
-        // For now, assume destination deployment means both are done
-        updateData.phase = "completed";
+        newPhase = "dst_escrow_deployed";
+      } else {
+        throw new Error("Invalid escrow type");
+      }
 
-        // After both escrows are deployed and validated, move to waiting-for-secret
+      // Update phase in database
+      await this.databaseService.updateOrderPhase(
+        confirmation.orderHash,
+        newPhase
+      );
+      updateData.phase = newPhase;
+
+      // If destination escrow is deployed, automatically move to waiting-for-secret after a short delay
+      if (confirmation.escrowType === "dst") {
         setTimeout(async () => {
           try {
             await this.updateOrderState(
@@ -669,8 +1384,6 @@ export class RelayerService extends EventEmitter {
             });
           }
         }, 1000); // Small delay for validation
-      } else {
-        throw new Error("Invalid escrow type");
       }
 
       // TODO: Implement proper escrow tracking in DatabaseService
@@ -1493,7 +2206,7 @@ export class RelayerService extends EventEmitter {
     return chainMapping[chainId] || "ethereum"; // Default to ethereum
   }
 
-  async submitResolverBid(bid: ResolverBidRequest): Promise<boolean> {
+  async submitResolverBid(bid: any): Promise<boolean> {
     try {
       this.validateInitialized();
 
@@ -1557,16 +2270,68 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
-      const orderStatus = this.orderManager.getOrderStatus(orderHash);
-      if (!orderStatus) {
+      // Get order from database instead of memory-only OrderManager
+      const orderRecord = await this.databaseService.getOrder(orderHash);
+      if (!orderRecord) {
         return null;
       }
+
+      // Convert database record to OrderStatus format
+      const extendedRecord = orderRecord as FusionOrderExtended;
+      const orderStatus: OrderStatus = {
+        orderHash: orderRecord.orderHash,
+        phase: (extendedRecord.phase ||
+          this.mapStatusToPhase(
+            orderRecord.status as unknown as string
+          )) as TimelockPhase["phase"],
+        sourceEscrow: extendedRecord.srcEscrowAddress
+          ? {
+              orderHash: orderRecord.orderHash,
+              chain: orderRecord.sourceChain,
+              contractAddress: extendedRecord.srcEscrowAddress,
+              secretHash: orderRecord.secretHash,
+              amount: orderRecord.sourceAmount,
+              timeout: orderRecord.timeout,
+              creator: orderRecord.maker,
+              designated: extendedRecord.assignedResolver || "",
+              isCreated: true,
+              isWithdrawn: false,
+              isCancelled: false,
+              transactionHash: extendedRecord.srcEscrowTxHash,
+            }
+          : undefined,
+        destinationEscrow: extendedRecord.dstEscrowAddress
+          ? {
+              orderHash: orderRecord.orderHash,
+              chain: orderRecord.destinationChain,
+              contractAddress: extendedRecord.dstEscrowAddress,
+              secretHash: orderRecord.secretHash,
+              amount: orderRecord.destinationAmount,
+              timeout: orderRecord.timeout,
+              creator: orderRecord.maker,
+              designated: extendedRecord.assignedResolver || "",
+              isCreated: true,
+              isWithdrawn: false,
+              isCancelled: false,
+              transactionHash: extendedRecord.dstEscrowTxHash,
+            }
+          : undefined,
+        secret: undefined, // TODO: Add secret management
+        isCompleted: (orderRecord.status as unknown as string) === "completed",
+        events: orderRecord.events || [],
+      };
 
       // Enrich with current timelock information
       const timelock = this.timelockManager.getTimelockPhase(orderHash);
       if (timelock) {
         orderStatus.timelock = timelock;
       }
+
+      this.logger.debug("Retrieved order status from database", {
+        orderHash,
+        phase: orderStatus.phase,
+        status: orderRecord.status,
+      });
 
       return orderStatus;
     } catch (error) {
@@ -1578,10 +2343,54 @@ export class RelayerService extends EventEmitter {
     }
   }
 
+  /**
+   * Map legacy status to new phase format for backwards compatibility
+   */
+  private mapStatusToPhase(status: string): string {
+    const statusToPhaseMap: Record<string, string> = {
+      pending: "submitted",
+      auction_active: "claimed",
+      bid_accepted: "claimed",
+      processing: "src_escrow_deployed",
+      completed: "completed",
+      cancelled: "cancelled",
+    };
+
+    return statusToPhaseMap[status] || "submitted";
+  }
+
   async getActiveOrders(): Promise<FusionOrder[]> {
     try {
       this.validateInitialized();
-      return this.orderManager.getActiveOrders();
+
+      // Get active orders from database instead of memory-only OrderManager
+      const activeOrderRecords = await this.databaseService.getActiveOrders();
+
+      // Convert database records to FusionOrder format
+      const fusionOrders: FusionOrder[] = activeOrderRecords.map(record => ({
+        orderHash: record.orderHash,
+        maker: record.maker,
+        userSrcAddress: record.userSrcAddress || record.maker, // Fallback to maker for backward compatibility
+        userDstAddress: record.userDstAddress || record.maker, // Fallback to maker for backward compatibility
+        sourceChain: record.sourceChain,
+        destinationChain: record.destinationChain,
+        sourceToken: record.sourceToken,
+        destinationToken: record.destinationToken,
+        sourceAmount: record.sourceAmount,
+        destinationAmount: record.destinationAmount,
+        secretHash: record.secretHash,
+        timeout: record.timeout,
+        initialRateBump: record.initialRateBump,
+        signature: record.signature,
+        nonce: record.nonce,
+        createdAt: record.createdAt,
+      }));
+
+      this.logger.debug("Retrieved active orders from database", {
+        count: fusionOrders.length,
+      });
+
+      return fusionOrders;
     } catch (error) {
       this.logger.error("Failed to get active orders", {
         error: (error as Error).message,
@@ -1590,24 +2399,124 @@ export class RelayerService extends EventEmitter {
     }
   }
 
-  async registerResolver(resolver: RelayerStatus): Promise<void> {
+  /**
+   * Restore active orders and state from database on startup
+   * This prevents progress loss when the server restarts
+   */
+  private async restoreStateFromDatabase(): Promise<void> {
     try {
-      this.validateInitialized();
+      this.logger.info("Restoring orders and state from database...");
 
-      this.orderManager.registerResolver(resolver);
-      this.secretManager.registerResolver(resolver);
+      // Get all orders that are not completed or cancelled
+      const activeOrderStates = [
+        "submitted",
+        "claimed",
+        "src_escrow_deployed",
+        "dst_escrow_deployed",
+        "waiting-for-secret",
+      ];
 
-      this.logger.info("Resolver registered", {
-        address: resolver.address,
-        reputation: resolver.reputation,
-        isKyc: resolver.isKyc,
+      // Query database for active orders
+      const activeOrders =
+        await this.databaseService.getOrdersByPhases(activeOrderStates);
+
+      this.logger.info("Found active orders to restore", {
+        count: activeOrders.length,
+        activeOrderStates,
+      });
+
+      let restoredCount = 0;
+      let errorCount = 0;
+
+      for (const order of activeOrders) {
+        try {
+          // Restore order to OrderManager (convert database record to FusionOrder)
+          const fusionOrder: FusionOrder = {
+            orderHash: order.orderHash,
+            maker: order.maker,
+            userSrcAddress: order.userSrcAddress || order.maker, // Fallback to maker for backward compatibility
+            userDstAddress: order.userDstAddress || order.maker, // Fallback to maker for backward compatibility
+            sourceChain: order.sourceChain,
+            destinationChain: order.destinationChain,
+            sourceToken: order.sourceToken,
+            destinationToken: order.destinationToken,
+            sourceAmount: order.sourceAmount,
+            destinationAmount: order.destinationAmount,
+            secretHash: order.secretHash,
+            timeout: order.timeout,
+            initialRateBump: order.initialRateBump,
+            signature: order.signature,
+            nonce: order.nonce,
+            createdAt: order.createdAt,
+          };
+
+          // Add the order to OrderManager (this will likely need a restoreOrder method)
+          // For now, we'll use the existing methods
+          // TODO: Implement restoreOrder method in OrderManager for better state handling
+
+          // Resume timelock monitoring if needed
+          if (
+            order.phase &&
+            order.phase !== "completed" &&
+            order.phase !== "cancelled"
+          ) {
+            try {
+              await this.timelockManager.startMonitoring(order.orderHash);
+              this.logger.debug("Resumed timelock monitoring", {
+                orderHash: order.orderHash,
+                phase: order.phase,
+              });
+            } catch (timelockError) {
+              this.logger.warn("Failed to resume timelock monitoring", {
+                orderHash: order.orderHash,
+                phase: order.phase,
+                error: (timelockError as Error).message,
+              });
+            }
+          }
+
+          // TODO: Resume escrow monitoring if escrows are deployed
+          // This would require additional fields in the database to store escrow addresses
+          // if (order.srcEscrowAddress || order.dstEscrowAddress) {
+          //   await this.escrowVerifier.resumeMonitoring(order.orderHash, {
+          //     srcEscrowAddress: order.srcEscrowAddress,
+          //     dstEscrowAddress: order.dstEscrowAddress,
+          //     srcChain: order.sourceChain,
+          //     dstChain: order.destinationChain
+          //   });
+          // }
+
+          this.logger.debug("Restored order", {
+            orderHash: order.orderHash,
+            phase: order.phase,
+            maker: order.maker,
+            sourceChain: order.sourceChain,
+            destinationChain: order.destinationChain,
+          });
+
+          restoredCount++;
+        } catch (orderError) {
+          this.logger.error("Failed to restore individual order", {
+            orderHash: order.orderHash,
+            phase: order.phase,
+            error: (orderError as Error).message,
+          });
+          errorCount++;
+        }
+      }
+
+      this.logger.info("State restoration completed", {
+        totalFound: activeOrders.length,
+        restoredCount,
+        errorCount,
+        activeOrderStates,
       });
     } catch (error) {
-      this.logger.error("Failed to register resolver", {
+      this.logger.error("Failed to restore state from database", {
         error: (error as Error).message,
-        resolver: resolver.address,
       });
-      throw error;
+      // Don't throw - allow service to start even if restoration fails
+      // This ensures the service remains available for new orders
     }
   }
 

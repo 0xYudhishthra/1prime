@@ -1,7 +1,0 @@
-Always To install something from shadcn ui follow the below patter where:
-pnpm dlx shadcn@latest add tooltip
-
----
-Above is an example, so other tooltip it could be button or accordion for example.
-
-https://ui.shadcn.com/docs

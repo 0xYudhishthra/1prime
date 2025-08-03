@@ -6,7 +6,6 @@ export interface ChainConfig {
   blockTime: number; // Average block time in seconds
   finalityBlocks: number; // Blocks to wait for finality
   gasLimit: {
-    htlcCreation: number;
     withdrawal: number;
     cancellation: number;
   };
@@ -17,35 +16,21 @@ export interface ChainConfig {
 export interface FusionOrder {
   orderHash: string;
   maker: string;
+  userSrcAddress: string; // User address on source chain
+  userDstAddress: string; // User address on destination chain
   sourceChain: string;
   destinationChain: string;
-  sourceToken: string;
-  destinationToken: string;
+  sourceToken: string; // Resolved token address on source chain
+  destinationToken: string; // Resolved token address on destination chain
   sourceAmount: string;
   destinationAmount: string;
   secretHash: string;
   timeout: number;
-  auctionStartTime: number;
-  auctionDuration: number;
+
   initialRateBump: number; // Basis points
   signature: string;
   nonce: string;
   createdAt: number;
-  // Dynamic HTLC contract addresses (set by resolver during Phase 2)
-  sourceChainHtlcAddress?: string;
-  destinationChainHtlcAddress?: string;
-}
-
-export interface DutchAuctionState {
-  orderHash: string;
-  startTime: number;
-  duration: number;
-  initialRateBump: number;
-  currentRate: number;
-  isActive: boolean;
-  winner?: string;
-  finalRate?: number;
-  participatingResolvers: string[];
 }
 
 export interface EscrowDetails {
@@ -124,7 +109,7 @@ export interface OrderStatus {
   phase: TimelockPhase["phase"];
   sourceEscrow?: EscrowDetails;
   destinationEscrow?: EscrowDetails;
-  auction?: DutchAuctionState;
+
   secret?: SecretManagement;
   timelock?: TimelockPhase;
   isCompleted: boolean;
@@ -135,7 +120,6 @@ export interface OrderStatus {
 export interface OrderEvent {
   type:
     | "order_created"
-    | "auction_started"
     | "escrow_created"
     | "secret_revealed"
     | "withdrawal_completed"
@@ -153,20 +137,20 @@ export interface ChainAdapter {
   createEscrow(order: FusionOrder, resolver: string): Promise<string>;
   verifyEscrow(
     orderHash: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<EscrowDetails>;
   withdrawFromEscrow(
     orderHash: string,
     secret: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<string>;
-  cancelEscrow(orderHash: string, htlcContractAddress: string): Promise<string>;
+  cancelEscrow(orderHash: string, escrowAddress: string): Promise<string>;
   getBlockNumber(): Promise<number>;
   getTransaction(hash: string): Promise<any>;
   estimateGas(
     operation: string,
     params: any,
-    htlcContractAddress?: string
+    escrowAddress?: string
   ): Promise<number>;
 }
 
@@ -200,10 +184,11 @@ export interface ApiResponse<T = any> {
 }
 
 export interface GenerateOrderRequest {
-  userAddress: string;
+  userSrcAddress: string; // User address on source chain
+  userDstAddress: string; // User address on destination chain
   amount: string;
-  fromToken: string;
-  toToken: string;
+  fromToken: string; // Token symbol (e.g., "usdc", "eth")
+  toToken: string; // Token symbol (e.g., "usdc", "eth")
   fromChain: string;
   toChain: string;
   secretHash: string; // Previously generated secret hash from frontend
@@ -217,8 +202,6 @@ export interface SubmitSignedOrderRequest {
 export interface ClaimOrderRequest {
   orderHash: string;
   resolverAddress: string;
-  estimatedGas: number;
-  signature: string;
 }
 
 export interface EscrowDeploymentConfirmation {
@@ -228,21 +211,11 @@ export interface EscrowDeploymentConfirmation {
   transactionHash: string;
   blockNumber: number;
   resolverAddress: string;
-  signature: string;
-}
-
-export interface ResolverBidRequest {
-  orderHash: string;
-  resolver: string;
-  estimatedGas: number;
-  signature: string;
 }
 
 export interface SecretRevealRequest {
   orderHash: string;
   secret: string;
-  proof: string;
-  signature: string;
 }
 
 export interface HealthCheckResponse {
@@ -290,16 +263,8 @@ export interface SDKHashLock {
   secrets?: string[];
 }
 
-export interface SDKAuctionDetails {
-  initialRateBump: number;
-  points: any[];
-  duration: bigint;
-  startTime: bigint;
-}
-
 export interface SDKEscrowExtension {
   address: SDKAddress;
-  auctionDetails: SDKAuctionDetails;
   postInteractionData: any;
   makerPermit?: string;
   builder: any;
@@ -362,15 +327,14 @@ export interface FusionOrderExtended extends FusionOrder {
     dstCancellation: number; // B4: Resolver cancellation (destination)
   };
 
-  // Enhanced auction details from SDK
-  enhancedAuctionDetails?: {
-    points: any[]; // Price curve points
-  };
-
   // Order state management
   phase?: string; // Current order phase (submitted, claimed, src_escrow_deployed, etc.)
   assignedResolver?: string; // Resolver assigned to this order
   estimatedGas?: number; // Gas estimate for execution
+
+  // Auction fields from SDK
+  auctionStartTime?: number; // Auction start timestamp
+  auctionDuration?: number; // Auction duration in seconds
 
   // Escrow contract addresses
   srcEscrowAddress?: string; // Source chain escrow contract address
@@ -383,6 +347,21 @@ export interface FusionOrderExtended extends FusionOrder {
   // Deployment timestamps (CRITICAL for timelock calculation)
   sourceEscrowDeployedAt?: number; // When source escrow deployed (E1)
   destinationEscrowDeployedAt?: number; // When destination escrow deployed (E2)
+
+  // NEAR address compatibility fields
+  originalAddresses?: {
+    userAddress: string;
+    fromToken: string;
+    toToken: string;
+    escrowFactory: string;
+  };
+  processedAddresses?: {
+    userAddress: string;
+    fromToken: string;
+    toToken: string;
+    escrowFactory: string;
+  };
+  nearAddressMappings?: Record<string, string>; // EVM placeholder -> original NEAR address
 }
 
 // Timelock phase info (calculated from deployment time + timeLocks)

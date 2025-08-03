@@ -6,19 +6,6 @@ use near_sdk::{
 };
 use sha2::{Digest, Sha256};
 
-/// Get the contract WASM code for deployment
-fn get_contract_wasm() -> Vec<u8> {
-    #[cfg(feature = "include-wasm")]
-    {
-        include_bytes!("../../target/near/escrow_src/escrow_src.wasm").to_vec()
-    }
-    #[cfg(not(feature = "include-wasm"))]
-    {
-        // This should not be called in practice without the WASM
-        env::panic_str("Contract WASM not available - rebuild with include-wasm feature")
-    }
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 use near_sdk::schemars::{self, JsonSchema};
 
@@ -104,34 +91,6 @@ pub struct EscrowSrc {
 
 #[near_bindgen]
 impl EscrowSrc {
-    /// Create a new escrow instance (template factory method)
-    #[payable]
-    pub fn create_escrow(
-
-        &mut self,
-        escrow_account: AccountId,
-        immutables: Immutables,
-        factory: AccountId,
-    ) -> Promise {
-        // Create new escrow instance using template
-        Promise::new(escrow_account.clone())
-            .create_account()
-            .add_full_access_key(env::signer_account_pk())
-            .transfer(env::attached_deposit())
-            .deploy_contract(
-                get_contract_wasm(),
-            )
-            .function_call(
-                "init".to_string(),
-                near_sdk::serde_json::to_vec(&CreateEscrowArgs {
-                    immutables,
-                    factory,
-                })
-                .unwrap(),
-                NearToken::from_yoctonear(0),
-                Gas::from_tgas(30),
-            )
-    }
 
     /// Initialize the escrow (called by factory during deployment)
     #[init]
@@ -164,6 +123,21 @@ impl EscrowSrc {
         } else {
             None
         };
+
+        if immutables.token.clone().as_str() != "near" && immutables.amount.clone() > 0{
+            Promise::new(immutables.token.clone()).function_call(
+                "transfer_from".to_string(),
+                near_sdk::serde_json::to_vec(
+                    &serde_json::json!({
+                        "from": env::predecessor_account_id(),
+                        "to": env::current_account_id(),
+                        "value": immutables.amount.clone().to_string(),
+                    })
+                ).unwrap(),
+                NearToken::from_yoctonear(0),
+                Gas::from_tgas(5),
+            );
+        }
 
         let state = EscrowState {
             is_withdrawn: false,

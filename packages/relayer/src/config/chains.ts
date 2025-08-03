@@ -5,7 +5,6 @@ export const DEFAULT_EVM_CONFIG: Partial<ChainConfig> = {
   blockTime: 12, // Ethereum average
   finalityBlocks: 64, // ~12.8 minutes
   gasLimit: {
-    htlcCreation: 200000,
     withdrawal: 150000,
     cancellation: 100000,
   },
@@ -16,7 +15,6 @@ export const DEFAULT_NEAR_CONFIG: Partial<ChainConfig> = {
   blockTime: 1, // NEAR average
   finalityBlocks: 3, // NEAR finality is fast
   gasLimit: {
-    htlcCreation: 300000000000000, // 300 TGas
     withdrawal: 200000000000000, // 200 TGas
     cancellation: 100000000000000, // 100 TGas
   },
@@ -79,10 +77,11 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     chainId: "mainnet",
     name: "NEAR Protocol",
     rpcUrl: process.env.NEAR_RPC_URL || "https://rpc.mainnet.near.org",
+    escrowFactoryAddress: "0x0000000000000000000000000000000000000000",
   } as ChainConfig,
 
   // Ethereum Sepolia Testnet
-  sepolia: {
+  "eth-sepolia": {
     ...DEFAULT_EVM_CONFIG,
     chainId: "11155111",
     name: "Sepolia Testnet",
@@ -96,7 +95,7 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
     chainId: "398",
     name: "NEAR Testnet",
     rpcUrl: process.env.NEAR_TESTNET_RPC_URL || "https://rpc.testnet.near.org",
-    escrowFactoryAddress: "1prime-global-factory-contract.testnet",
+    escrowFactoryAddress: "0x0000000000000000000000000000000000000000",
   } as ChainConfig,
 };
 
@@ -107,13 +106,13 @@ export const SUPPORTED_CHAIN_PAIRS = [
   ["polygon", "near"],
   ["arbitrum", "near"],
   // Testnet pairs
-  ["sepolia", "near-testnet"],
+  ["eth-sepolia", "near-testnet"],
 ] as const;
 
 export const getChainConfig = (chainId: string): ChainConfig => {
   console.log("chainId", chainId);
   const config = CHAIN_CONFIGS[chainId];
-  
+
   if (!config) {
     throw new Error(`Unsupported chain: ${chainId}`);
   }
@@ -135,6 +134,7 @@ export const getEscrowFactoryAddress = (chainId: string): string => {
  * Convert chain ID to chain name
  */
 export const getChainNameFromChainId = (chainId: string): string | null => {
+  console.log("chainId", chainId);
   const config = Object.entries(CHAIN_CONFIGS).find(
     ([_, config]) => config.chainId === chainId
   );

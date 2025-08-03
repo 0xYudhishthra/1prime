@@ -1,0 +1,38 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    // General rules
+    "no-console": "off", // Allow console statements for debugging
+    "no-debugger": "error",
+    "no-alert": "warn",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-unused-expressions": "error",
+    "no-duplicate-imports": "error",
+    "no-multiple-empty-lines": ["error", { "max": 1 }],
+    "eol-last": "error",
+    "semi": ["error", "always"],
+    "quotes": ["error", "single", { "avoidEscape": true }],
+    "comma-dangle": ["error", "always-multiline"],
+    "object-curly-spacing": ["error", "always"],
+    "array-bracket-spacing": ["error", "never"],
+
+    // React rules - be more lenient with unescaped entities
+    "react/no-unescaped-entities": "off"
+  },
+  "env": {
+    "browser": true,
+    "es2020": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    ".next/",
+    "out/",
+    "build/",
+    "dist/",
+    "*.config.js",
+    "*.config.mjs"
+  ]
+}

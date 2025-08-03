@@ -148,7 +148,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "hex",
- "near-sdk",
+ "near-sdk 5.14.0",
  "serde",
  "serde_json",
  "sha2",
@@ -160,7 +160,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "hex",
- "near-sdk",
+ "near-sdk 5.14.0",
  "serde",
  "serde_json",
  "sha2",
@@ -172,7 +172,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "hex",
- "near-sdk",
+ "near-sdk 5.14.0",
  "serde",
  "serde_json",
  "sha2",
@@ -278,9 +278,28 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "hex",
- "near-sdk",
+ "near-sdk 5.15.1",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "near-sdk"
+version = "5.14.0"
+source = "git+https://github.com/near/near-sdk-rs.git?branch=global-contracts#4841724ab938bd2f729050c1195a27f89435a595"
+dependencies = [
+ "base64",
+ "borsh",
+ "bs58",
+ "near-account-id",
+ "near-gas",
+ "near-sdk-macros 5.14.0",
+ "near-sys 0.2.4 (git+https://github.com/near/near-sdk-rs.git?branch=global-contracts)",
+ "near-token",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "wee_alloc",
 ]
 
 [[package]]
@@ -294,13 +313,29 @@ dependencies = [
  "bs58",
  "near-account-id",
  "near-gas",
- "near-sdk-macros",
- "near-sys",
+ "near-sdk-macros 5.15.1",
+ "near-sys 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "near-token",
  "once_cell",
  "serde",
  "serde_json",
  "wee_alloc",
+]
+
+[[package]]
+name = "near-sdk-macros"
+version = "5.14.0"
+source = "git+https://github.com/near/near-sdk-rs.git?branch=global-contracts#4841724ab938bd2f729050c1195a27f89435a595"
+dependencies = [
+ "Inflector",
+ "darling",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "strum",
+ "strum_macros",
+ "syn",
 ]
 
 [[package]]
@@ -325,6 +360,11 @@ name = "near-sys"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7d8e0ba9994e4d54cb4b301cd5fa9f2defcb69851148103512b9640a7e91572"
+
+[[package]]
+name = "near-sys"
+version = "0.2.4"
+source = "git+https://github.com/near/near-sdk-rs.git?branch=global-contracts#4841724ab938bd2f729050c1195a27f89435a595"
 
 [[package]]
 name = "near-token"

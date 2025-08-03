@@ -1,8 +1,6 @@
 'use client';
 
-import type React from 'react';
-
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,7 +39,7 @@ export default function SignUpPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ email, password }),
-        }
+        },
       );
 
       if (response.ok) {
@@ -97,7 +95,7 @@ export default function SignUpPage() {
               </Link>
               <Link href="/" className="block text-center">
                 <Button variant="outline" className="w-full bg-transparent">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4" />
                   Back to Home
                 </Button>
               </Link>
@@ -113,13 +111,12 @@ export default function SignUpPage() {
       <div className="flex min-h-screen items-center justify-center bg-white p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Create Account</CardTitle>
-            <CardDescription>
-              Sign up to get your cross-chain wallet and start swapping tokens
-              via voice.
+            <CardTitle className="text-2xl">Join 1Prime</CardTitle>
+            <CardDescription className="mt-[-6px]">
+              Start swapping tokens via voice.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-[-4px]">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -152,7 +149,7 @@ export default function SignUpPage() {
               )}
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Account & Generate Wallets
+                Create Account
               </Button>
             </form>
             <div className="mt-6 text-center">
@@ -169,7 +166,7 @@ export default function SignUpPage() {
             <div className="mt-4 text-center">
               <Link href="/">
                 <Button variant="outline" size="sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <ArrowLeft className="h-4 w-4" />
                   Back to Home
                 </Button>
               </Link>

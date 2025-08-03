@@ -15,7 +15,12 @@ pub fn update_funding_eth_address(value: String) {
     *funding_eth_address = value;
 }
 
-pub async fn get_funding_eth_address() -> String {
+pub fn get_funding_eth_address() -> String {
+    let funding_eth_address = FUNDING_ETH_ADDRESS.read().unwrap();
+    funding_eth_address.clone()
+}
+
+pub async fn get_funding_eth_address_await() -> String {
     let funding_eth_address = FUNDING_ETH_ADDRESS.read().unwrap();
     funding_eth_address.clone()
 }

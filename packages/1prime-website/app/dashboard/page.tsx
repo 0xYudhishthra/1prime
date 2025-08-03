@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,14 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Copy, Wallet, Loader2, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  Copy,
+  Wallet,
+  Loader2,
+  RefreshCw,
+  PieChart,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
@@ -76,7 +82,7 @@ function DashboardPage() {
   const router = useRouter();
   const { token, isAuthenticated, logout } = useAuth();
 
-  const fetchWalletData = async () => {
+  const fetchWalletData = useCallback(async () => {
     if (!token) {
       setError('No auth token found. Please sign in.');
       setLoading(false);
@@ -85,13 +91,13 @@ function DashboardPage() {
 
     console.log(
       'Retrieved token:',
-      token ? token.substring(0, 20) + '...' : 'null'
+      token ? token.substring(0, 20) + '...' : 'null',
     ); // Debug log
 
     try {
       console.log(
         'Making API call with token:',
-        token.substring(0, 20) + '...'
+        token.substring(0, 20) + '...',
       ); // Debug log
       const response = await fetch(
         'https://shortcut-auth.tanweihup.workers.dev/api/wallet/balances',
@@ -100,7 +106,7 @@ function DashboardPage() {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
       );
 
       console.log('Response status:', response.status); // Debug log
@@ -130,7 +136,7 @@ function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token, router]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -143,7 +149,7 @@ function DashboardPage() {
 
   useEffect(() => {
     fetchWalletData();
-  }, []);
+  }, [fetchWalletData]);
 
   if (loading) {
     return (
@@ -181,11 +187,11 @@ function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-6xl p-6">
-        {/* Dashboard Header */}
+      <div className="mx-auto max-w-4xl p-6">
+        {/* Header with Action Buttons */}
         <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold">1Prime Wallet</h1>
+          <div>
+            <h1 className="mt-2 text-3xl font-bold">1Prime Wallet</h1>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/deposit">
@@ -207,253 +213,240 @@ function DashboardPage() {
             </Button>
           </div>
         </div>
-        {/* Summary */}
-        <div className="mb-8">
-          <h1 className="mb-2 text-3xl font-bold">Your Cross-Chain Wallet</h1>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">
-              {walletData.summary.totalEvmTokens} EVM Tokens
-            </Badge>
-            <Badge variant="outline">
-              {walletData.summary.totalNearTokens} NEAR Tokens
-            </Badge>
-            <Badge variant="outline">
-              {walletData.summary.evmChainsWithBalance}/
-              {walletData.summary.totalEvmChains} EVM Chains Active
-            </Badge>
-          </div>
-        </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="evm">EVM Chains</TabsTrigger>
-            <TabsTrigger value="near">NEAR Protocol</TabsTrigger>
-            <TabsTrigger value="addresses">Addresses</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-6">
-            {/* EVM Tokens Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5" />
-                  EVM Token Balances
-                </CardTitle>
-                <CardDescription>
-                  Aggregated across {walletData.evm.supportedChains.length}{' '}
-                  supported chains
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {walletData.evm.totalBalances.length > 0 ? (
-                  <div className="space-y-4">
-                    {walletData.evm.totalBalances.map((tokenBalance, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between rounded-lg border p-4"
-                      >
-                        <div>
-                          <div className="font-semibold">
-                            {tokenBalance.token.symbol}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {tokenBalance.token.name}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">
-                            {tokenBalance.balance.formatted}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            Across {tokenBalance.chainBreakdown?.length || 0}{' '}
-                            chains
-                          </div>
-                        </div>
+        {/* All Token Balances */}
+        <div className="space-y-6">
+          {/* EVM Chains */}
+          <Card>
+            <CardContent className="">
+              <div className="space-y-6">
+                {/* Ethereum Sepolia */}
+                {walletData.evm.chainBreakdown
+                  .filter(
+                    (chain) =>
+                      chain.chainName.includes('Ethereum Sepolia') ||
+                      (chain.chainName.includes('Sepolia') &&
+                        !chain.chainName.includes('Arbitrum') &&
+                        !chain.chainName.includes('Optimism')),
+                  )
+                  .map((chain) => (
+                    <div key={chain.chainId} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">
+                          {chain.chainName}
+                        </h3>
+                        <Badge variant="outline">
+                          Chain ID: {chain.chainId}
+                        </Badge>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">
-                    No EVM tokens found. Try depositing some testnet tokens.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* NEAR Tokens Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>NEAR Token Balances</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {walletData.near.tokens.length > 0 ? (
-                  <div className="space-y-4">
-                    {walletData.near.tokens.map((tokenBalance, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between rounded-lg border p-4"
-                      >
-                        <div>
-                          <div className="font-semibold">
-                            {tokenBalance.token.symbol}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {tokenBalance.token.name}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">
-                            {tokenBalance.balance.formatted}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No NEAR tokens found.</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="evm" className="space-y-6">
-            {walletData.evm.chainBreakdown.map((chain) => (
-              <Card key={chain.chainId}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    {chain.chainName}
-                    <Badge variant="outline">Chain ID: {chain.chainId}</Badge>
-                  </CardTitle>
-                  <CardDescription className="font-mono text-xs">
-                    {chain.address}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {chain.tokens.length > 0 ? (
-                    <div className="space-y-3">
-                      {chain.tokens.map((tokenBalance, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between rounded bg-gray-50 p-3"
-                        >
-                          <div>
-                            <div className="font-medium">
-                              {tokenBalance.token.symbol}
+                      {chain.tokens.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {chain.tokens.map((tokenBalance, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between rounded-lg border bg-gray-50 p-3"
+                            >
+                              <div>
+                                <div className="font-medium">
+                                  {tokenBalance.token.symbol}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-semibold">
+                                  {parseFloat(
+                                    tokenBalance.balance.formatted,
+                                  ).toFixed(2)}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm text-gray-500">
-                              {tokenBalance.token.name}
-                            </div>
-                          </div>
-                          <div className="font-semibold">
-                            {tokenBalance.balance.formatted}
-                          </div>
+                          ))}
                         </div>
-                      ))}
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          No tokens on this chain
+                        </p>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-gray-500">No tokens on this chain.</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </TabsContent>
+                  ))}
 
-          <TabsContent value="near">
-            <Card>
-              <CardHeader>
-                <CardTitle>NEAR Protocol</CardTitle>
-                <CardDescription className="font-mono text-xs">
-                  {walletData.near.accountId}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                {/* Arbitrum Sepolia */}
+                {walletData.evm.chainBreakdown
+                  .filter((chain) =>
+                    chain.chainName.includes('Arbitrum Sepolia'),
+                  )
+                  .map((chain) => (
+                    <div key={chain.chainId} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">
+                          {chain.chainName}
+                        </h3>
+                        <Badge variant="outline">
+                          Chain ID: {chain.chainId}
+                        </Badge>
+                      </div>
+                      {chain.tokens.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {chain.tokens.map((tokenBalance, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between rounded-lg border bg-gray-50 p-3"
+                            >
+                              <div>
+                                <div className="font-medium">
+                                  {tokenBalance.token.symbol}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-semibold">
+                                  {parseFloat(
+                                    tokenBalance.balance.formatted,
+                                  ).toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          No tokens on this chain
+                        </p>
+                      )}
+                    </div>
+                  ))}
+
+                {/* Optimism Sepolia */}
+                {walletData.evm.chainBreakdown
+                  .filter((chain) =>
+                    chain.chainName.includes('Optimism Sepolia'),
+                  )
+                  .map((chain) => (
+                    <div key={chain.chainId} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">
+                          {chain.chainName}
+                        </h3>
+                        <Badge variant="outline">
+                          Chain ID: {chain.chainId}
+                        </Badge>
+                      </div>
+                      {chain.tokens.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {chain.tokens.map((tokenBalance, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between rounded-lg border bg-gray-50 p-3"
+                            >
+                              <div>
+                                <div className="font-medium">
+                                  {tokenBalance.token.symbol}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-semibold">
+                                  {parseFloat(
+                                    tokenBalance.balance.formatted,
+                                  ).toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          No tokens on this chain
+                        </p>
+                      )}
+                    </div>
+                  ))}
+
+                {/* Other EVM Chains */}
+                {walletData.evm.chainBreakdown
+                  .filter(
+                    (chain) =>
+                      !chain.chainName.includes('Ethereum Sepolia') &&
+                      !chain.chainName.includes('Arbitrum Sepolia') &&
+                      !chain.chainName.includes('Optimism Sepolia'),
+                  )
+                  .map((chain) => (
+                    <div key={chain.chainId} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">
+                          {chain.chainName}
+                        </h3>
+                        <Badge variant="outline">
+                          Chain ID: {chain.chainId}
+                        </Badge>
+                      </div>
+                      {chain.tokens.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {chain.tokens.map((tokenBalance, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between rounded-lg border bg-gray-50 p-3"
+                            >
+                              <div>
+                                <div className="font-medium">
+                                  {tokenBalance.token.symbol}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-semibold">
+                                  {parseFloat(
+                                    tokenBalance.balance.formatted,
+                                  ).toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          No tokens on this chain
+                        </p>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* NEAR Protocol */}
+          <Card>
+            <CardContent className="">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">NEAR Protocol</h3>
+                  <Badge variant="outline">NEAR</Badge>
+                </div>
                 {walletData.near.tokens.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {walletData.near.tokens.map((tokenBalance, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between rounded bg-gray-50 p-3"
+                        className="flex items-center justify-between rounded-lg border bg-gray-50 p-3"
                       >
                         <div>
                           <div className="font-medium">
                             {tokenBalance.token.symbol}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            {tokenBalance.token.name}
-                          </div>
-                          <div className="font-mono text-xs text-gray-400">
-                            {tokenBalance.token.accountId}
-                          </div>
                         </div>
-                        <div className="font-semibold">
-                          {tokenBalance.balance.formatted}
+                        <div className="text-right">
+                          <div className="font-semibold">
+                            {parseFloat(tokenBalance.balance.formatted).toFixed(
+                              2,
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500">No NEAR tokens found.</p>
+                  <p className="text-sm text-gray-500">No NEAR tokens found</p>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="addresses" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>EVM Smart Wallet</CardTitle>
-                <CardDescription>
-                  Same address across all supported EVM chains. Send funds here
-                  for best experience.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2 rounded bg-gray-50 p-3 font-mono text-sm">
-                  <span className="flex-1">{walletData.evm.address}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copyToClipboard(walletData.evm.address)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="mt-4">
-                  <h4 className="mb-2 font-medium">Supported Chains:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {walletData.evm.supportedChains.map((chain) => (
-                      <Badge key={chain.chainId} variant="outline">
-                        {chain.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>NEAR Account</CardTitle>
-                <CardDescription>
-                  Your NEAR protocol account for cross-chain swaps.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2 rounded bg-gray-50 p-3 font-mono text-sm">
-                  <span className="flex-1">{walletData.near.accountId}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copyToClipboard(walletData.near.accountId)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

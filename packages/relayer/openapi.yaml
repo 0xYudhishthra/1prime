@@ -4,10 +4,9 @@ info:
   description: |
     A 1inch Fusion+ compatible relayer service that facilitates cross-chain atomic swaps between EVM chains (Ethereum, Base, BSC, Polygon, Arbitrum) and NEAR Protocol.
 
-    This implementation follows the 1inch Fusion+ whitepaper architecture with per-swap HTLC deployment for secure cross-chain atomic swaps.
+    This implementation follows the 1inch Fusion+ whitepaper architecture for secure cross-chain atomic swaps.
 
     ## Features
-    - Dutch Auction Management with gas-adjusted custom curves
     - Partial Fill Support with Merkle tree-based N+1 secret management  
     - Cross-chain Escrow Verification
     - Real-time WebSocket updates
@@ -65,15 +64,12 @@ paths:
                       [
                         "order_created",
                         "order_updates",
-                        "auction_started",
-                        "auction_progress",
                         "phase_transition",
                         "secret_revealed",
                         "order_completed",
                         "order_cancelled",
                       ]
                   endpoints:
-                    "GET /health": "Get relayer health status and chain connectivity"
                     "POST /orders/prepare": "Generate unsigned Fusion+ order for frontend signing"
                     "POST /orders/submit": "Submit signed Fusion+ order to relayer"
                     "GET /orders": "Get all currently active orders"
@@ -81,16 +77,9 @@ paths:
                     "GET /orders/{hash}/verify-escrows": "Verify escrows are safe for secret revelation"
                     "POST /orders/{hash}/claim": "Claim order for resolver processing"
                     "POST /orders/{hash}/escrow-deployed": "Confirm escrow deployment"
-                    "POST /orders/{hash}/state": "Update order state"
                     "POST /orders/{hash}/reveal-secret": "Request secret revelation"
-                    "POST /bids": "Submit resolver bid for order execution"
-                    "POST /resolvers": "Register new resolver for order execution"
-                    "GET /auctions/{orderHash}": "Get auction information for specific order"
-                    "GET /stats": "Get system statistics and performance metrics"
                     "GET /ws-info": "Get WebSocket connection details and supported events"
                   features:
-                    "Dutch Auctions": "Competitive bidding with resolver selection"
-                    "Per-Swap HTLCs": "Dynamic escrow contract deployment for each swap"
                     "Cross-Chain": "EVM ↔ NEAR bidirectional atomic swaps"
                     "SDK Integration": "Native support for 1inch Fusion+ SDK orders"
                     "Real-time Updates": "WebSocket support for live order tracking"
@@ -111,39 +100,6 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /health:
-    get:
-      summary: Health Check
-      description: Returns the health status of the relayer service and all connected chains
-      operationId: getHealth
-      tags:
-        - Health
-      responses:
-        "200":
-          description: Service health status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthCheckResponse"
-              example:
-                status: "healthy"
-                timestamp: 1640995200000
-                version: "1.0.0"
-                chains:
-                  "ethereum":
-                    name: "Ethereum"
-                    connected: true
-                    blockNumber: 23057003
-                    latency: 120
-                  "near-testnet":
-                    name: "NEAR Testnet"
-                    connected: true
-                    blockNumber: 157970611
-                    latency: 80
-                activeOrders: 12
-                completedOrders: 1543
-                errorRate: 0.02
-
   /orders:
     get:
       summary: Get Active Orders
@@ -163,11 +119,16 @@ paths:
                 data:
                   - orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                     maker: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                    userSrcAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                    userDstAddress: "user.near"
                     sourceChain: "ethereum"
                     destinationChain: "near-testnet"
+                    sourceToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+                    destinationToken: "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"
                     sourceAmount: "10000000"
                     destinationAmount: "10000000"
-                    phase: "submitted"
+                    phase: "claimed"
+                    assignedResolver: "0xdef456789abcdef123456789abcdef123456789a"
                 timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
@@ -179,7 +140,7 @@ paths:
         Generate an unsigned Fusion+ order for frontend signing (Steps 3+4+5 of the cross-chain flow).
 
         This endpoint uses the 1inch SDK internally to create a properly structured CrossChainOrder
-        with HashLock, TimeLocks, and AuctionDetails. The frontend then signs this order.
+        with HashLock and TimeLocks. The frontend then signs this order.
 
         Returns the orderHash along with success/message fields for the prepared order.
         The full order details are stored in the database and can be retrieved during submission.
@@ -193,12 +154,13 @@ paths:
             schema:
               $ref: "#/components/schemas/GenerateOrderRequest"
             example:
-              userAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+              userSrcAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+              userDstAddress: "papasins.near"
               amount: "10000000"
-              fromToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-              toToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-              fromChain: "ethereum"
-              toChain: "near-testnet"
+              fromToken: "usdc"
+              toToken: "usdc"
+              fromChain: "11155111"
+              toChain: "398"
               secretHash: "0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524"
       responses:
         "200":
@@ -250,18 +212,10 @@ paths:
                 data:
                   orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   phase: "submitted"
+                  assignedResolver: null
                   sourceEscrow: null
                   destinationEscrow: null
-                  auction:
-                    orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
-                    startTime: 1640995200000
-                    duration: 300000
-                    initialRateBump: 1000
-                    currentRate: 1.0
-                    isActive: true
-                    winner: null
-                    finalRate: null
-                    participatingResolvers: []
+
                   secret: null
                   timelock:
                     phase: "submitted"
@@ -275,9 +229,10 @@ paths:
                     - type: "order_created"
                       timestamp: 1640995200000
                       data:
-                        userAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
-                        sourceChain: "ethereum"
-                        destinationChain: "near-testnet"
+                        userSrcAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                        userDstAddress: "papasins.near"
+                        sourceChain: "11155111"
+                        destinationChain: "398"
                 timestamp: 1640995200000
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -298,8 +253,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       responses:
         "200":
           description: Order status retrieved successfully
@@ -312,23 +267,22 @@ paths:
                 data:
                   orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   phase: "src_escrow_deployed"
+                  assignedResolver: "0xdef456789abcdef123456789abcdef123456789a"
                   sourceEscrow:
                     orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                     chain: "ethereum"
                     contractAddress: "0x128ce802AB730FbB360b784CA8C16dD73147649c"
+                    designated: "0xdef456789abcdef123456789abcdef123456789a"
                     amount: "10000000"
                     isCreated: true
                   destinationEscrow:
                     orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                     chain: "near-testnet"
                     contractAddress: "escrow-dst-template.testnet"
+                    designated: "0xdef456789abcdef123456789abcdef123456789a"
                     amount: "10000000"
                     isCreated: true
-                  auction:
-                    startTime: 1640995200000
-                    currentRate: 0.85
-                    isActive: false
-                    winner: "0xdef..."
+
                   isCompleted: false
                 timestamp: 1640995200000
         "404":
@@ -363,8 +317,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       responses:
         "200":
           description: Escrow verification completed (check safe field for result)
@@ -427,8 +381,8 @@ paths:
       description: |
         Claim an order for resolver processing (Step 7 of the cross-chain flow).
 
-        Only registered resolvers can claim orders. This transitions the order
-        to "claimed" phase and assigns it to the resolver.
+        Any resolver can claim unclaimed orders. This transitions the order
+        to "claimed" phase and assigns it to the resolver address.
       operationId: claimOrder
       tags:
         - Resolvers
@@ -439,8 +393,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       requestBody:
         required: true
         content:
@@ -448,10 +402,7 @@ paths:
             schema:
               $ref: "#/components/schemas/ClaimOrderRequest"
             example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               resolverAddress: "0xdef456789abcdef123456789abcdef123456789a"
-              estimatedGas: 150000
-              signature: "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890123456789abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
       responses:
         "200":
           description: Order claimed successfully
@@ -477,8 +428,15 @@ paths:
       description: |
         Confirm that an escrow has been deployed (Steps 7.1 & 9.1 of the cross-chain flow).
 
-        Resolvers call this endpoint after deploying source or destination escrows
+        The assigned resolver calls this endpoint after deploying source or destination escrows
         to update the order state and provide deployment details.
+
+        **On-Chain Verification**: This endpoint now performs comprehensive on-chain verification:
+        - Verifies the escrow contract exists at the provided address
+        - Confirms the contract was deployed at the specified transaction hash
+        - Validates block number matches the deployment
+        - Checks USDC token balance in the escrow (warns if insufficient)
+        - Uses native blockchain APIs and block explorers for verification
       operationId: confirmEscrowDeployment
       tags:
         - Resolvers
@@ -489,8 +447,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       requestBody:
         required: true
         content:
@@ -498,13 +456,11 @@ paths:
             schema:
               $ref: "#/components/schemas/EscrowDeploymentConfirmation"
             example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               escrowType: "src"
               escrowAddress: "0x789abcdef123456789abcdef123456789abcdef12"
               transactionHash: "0xdef456789abcdef123456789abcdef123456789abcdef123456789abcdef123456"
               blockNumber: 18500000
               resolverAddress: "0xabc123456789abcdef123456789abcdef123456789"
-              signature: "0x5a6b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234"
       responses:
         "200":
           description: Escrow deployment confirmed successfully
@@ -518,68 +474,54 @@ paths:
                   confirmed: true
                   orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   escrowType: "src"
-                  escrowAddress: "0x789..."
+                  escrowAddress: "0x789abcdef123456789abcdef123456789abcdef12"
+                  newPhase: "src_escrow_deployed"
+                  verification:
+                    contractExists: true
+                    deployedAtTxHash: true
+                    hasUsdcBalance: true
+                    usdcBalance: "1000000"
+                    verificationDetails:
+                      contractExists: true
+                      txHashMatches: true
+                      blockNumberMatches: true
+                      sufficientBalance: true
                 timestamp: 1640995200000
         "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /orders/{hash}/state:
-    post:
-      summary: Update Order State
-      description: |
-        Update the order state (Step 9 of the cross-chain flow).
-
-        Resolvers use this endpoint to transition orders to "waiting-for-secret"
-        or other states as the cross-chain swap progresses.
-      operationId: updateOrderState
-      tags:
-        - Resolvers
-      parameters:
-        - name: hash
-          in: path
-          required: true
-          description: Unique hash identifier of the order
-          schema:
-            type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateOrderStateRequest"
-            example:
-              newState: "waiting-for-secret"
-              resolverAddress: "0xdef..."
-      responses:
-        "200":
-          description: Order state updated successfully
+          description: Bad request - verification failed or invalid input
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: true
-                data:
-                  updated: true
-                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
-                timestamp: 1640995200000
-        "400":
-          $ref: "#/components/responses/BadRequest"
+              examples:
+                validation_error:
+                  summary: Invalid request parameters
+                  value:
+                    success: false
+                    error: "Invalid request parameters"
+                    timestamp: 1640995200000
+                verification_failed:
+                  summary: On-chain verification failed
+                  value:
+                    success: false
+                    error: "Escrow contract verification failed: No contract found at address 0x789..., Failed to verify transaction hash: Transaction not found"
+                    timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
 
   /orders/{hash}/reveal-secret:
     post:
-      summary: Request Secret Reveal
+      summary: Submit Secret for Revelation
       description: |
-        Request revelation of order secret after escrow verification (Step 11 of the cross-chain flow).
+        Submit the secret value for order completion after escrow verification (Step 11 of the cross-chain flow).
 
         **IMPORTANT:** Frontend MUST call `/orders/{hash}/verify-escrows` first to ensure
         it's safe to reveal the secret. Revealing secrets to unsafe escrows results in loss of funds.
+
+        **Simple Flow:**
+        - If conditions are met to release the secret, submit the actual random number/secret
+        - The secret will be stored in the database for the resolver to pick up
+        - The resolver can then use this secret to complete the atomic swap
       operationId: requestSecretReveal
       tags:
         - Security
@@ -590,8 +532,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       requestBody:
         required: true
         content:
@@ -599,10 +541,7 @@ paths:
             schema:
               $ref: "#/components/schemas/SecretRevealRequest"
             example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               secret: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-              proof: "0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
-              signature: "0x7f6e5d4c3b2a1098765432abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
       responses:
         "200":
           description: Secret reveal processed successfully
@@ -626,182 +565,6 @@ paths:
               example:
                 success: false
                 error: "Escrow verification not complete"
-                timestamp: 1640995200000
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /bids:
-    post:
-      summary: Submit Resolver Bid
-      description: Submit a bid for an active auction as a KYC'd resolver
-      operationId: submitResolverBid
-      tags:
-        - Resolvers
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ResolverBidRequest"
-            example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
-              resolver: "0xdef456789abcdef123456789abcdef123456789a"
-              estimatedGas: 150000
-              signature: "0x9f8e7d6c5b4a3928374650abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
-      responses:
-        "200":
-          description: Bid submitted successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: true
-                data:
-                  bidAccepted: true
-                  auctionWon: true
-                  finalRate: 0.85
-                timestamp: 1640995200000
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "403":
-          description: Resolver not authorized (KYC required)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: false
-                error: "Resolver must be KYC verified"
-                timestamp: 1640995200000
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /resolvers:
-    post:
-      summary: Register Resolver
-      description: Register a new resolver with KYC and reputation information
-      operationId: registerResolver
-      tags:
-        - Resolvers
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterResolverRequest"
-            example:
-              address: "0xdef..."
-              isKyc: true
-              bondAmount: "1000000000000000000000"
-              tier: 2
-              reputation: 95
-      responses:
-        "201":
-          description: Resolver registered successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: true
-                data:
-                  address: "0xdef..."
-                  registered: true
-                timestamp: 1640995200000
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          description: Resolver already exists
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: false
-                error: "Resolver already registered"
-                timestamp: 1640995200000
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /auctions/{orderHash}:
-    get:
-      summary: Get Auction Information
-      description: Retrieve detailed auction information for a specific order
-      operationId: getAuctionInfo
-      tags:
-        - Orders
-      parameters:
-        - name: orderHash
-          in: path
-          required: true
-          description: Unique hash identifier of the order
-          schema:
-            type: string
-            pattern: "^0x[a-fA-F0-9]{64}$"
-          example: "0x123abc..."
-      responses:
-        "200":
-          description: Auction information retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: true
-                data:
-                  orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
-                  startTime: 1640995200000
-                  duration: 300000
-                  initialRateBump: 1000
-                  currentRate: 0.85
-                  isActive: true
-                  participatingResolvers: ["0xabc...", "0xdef..."]
-                  winner: "0xdef..."
-                  finalRate: 0.82
-                timestamp: 1640995200000
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /stats:
-    get:
-      summary: Get System Statistics
-      description: Retrieve overall system statistics and performance metrics
-      operationId: getSystemStats
-      tags:
-        - Health
-      responses:
-        "200":
-          description: System statistics retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiResponse"
-              example:
-                success: true
-                data:
-                  activeOrders: 12
-                  completedOrders: 1543
-                  totalVolume: "50000000000000000000000"
-                  errorRate: 0.02
-                  uptime: 86400000
-                  chains:
-                    "ethereum":
-                      name: "Ethereum"
-                      connected: true
-                      blockNumber: 23057003
-                      latency: 120
-                    "near-testnet":
-                      name: "NEAR Testnet"
-                      connected: true
-                      blockNumber: 157970611
-                      latency: 80
-                  performance:
-                    avgOrderCompletionTime: 600000
-                    avgAuctionDuration: 120000
-                    resolverCount: 25
                 timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
@@ -831,9 +594,6 @@ paths:
                   supportedEvents:
                     - "order_created"
                     - "order_updates"
-                    - "auction_started"
-                    - "auction_progress"
-                    - "auction_won"
                     - "secret_revealed"
                     - "order_completed"
                     - "order_cancelled"
@@ -868,55 +628,11 @@ components:
           format: int64
           description: Unix timestamp of the response
 
-    HealthCheckResponse:
-      type: object
-      required:
-        - status
-        - timestamp
-        - version
-        - chains
-        - activeOrders
-        - completedOrders
-        - errorRate
-      properties:
-        status:
-          type: string
-          enum: [healthy, unhealthy]
-          description: Overall service health status
-        timestamp:
-          type: integer
-          format: int64
-          description: Unix timestamp
-        version:
-          type: string
-          description: Service version
-        chains:
-          type: object
-          additionalProperties:
-            type: object
-            properties:
-              connected:
-                type: boolean
-              blockNumber:
-                type: integer
-              latency:
-                type: integer
-                description: Latency in milliseconds
-        activeOrders:
-          type: integer
-          description: Number of currently active orders
-        completedOrders:
-          type: integer
-          description: Total number of completed orders
-        errorRate:
-          type: number
-          format: float
-          description: Current error rate (0.0 to 1.0)
-
     GenerateOrderRequest:
       type: object
       required:
-        - userAddress
+        - userSrcAddress
+        - userDstAddress
         - amount
         - fromToken
         - toToken
@@ -924,32 +640,32 @@ components:
         - toChain
         - secretHash
       properties:
-        userAddress:
+        userSrcAddress:
           type: string
-          pattern: "^0x[a-fA-F0-9]{40}$"
-          description: Maker's address
+          description: User's address on the source chain (can be EVM hex or NEAR account)
+        userDstAddress:
+          type: string
+          description: User's address on the destination chain (can be EVM hex or NEAR account)
         amount:
           type: string
           description: Amount to swap from source chain (in wei/smallest unit)
         fromToken:
           type: string
-          description: Source token symbol or address
+          description: Source token symbol (e.g., "usdc", "eth", "weth")
         toToken:
           type: string
-          description: Destination token symbol or address
+          description: Destination token symbol (e.g., "usdc", "eth", "weth")
         fromChain:
           type: string
-          description: Source blockchain name (e.g., "ethereum", "base", "bsc", "polygon", "arbitrum")
-          enum: ["ethereum", "base", "bsc", "polygon", "arbitrum"]
-          example: "ethereum"
+          description: Source blockchain chain ID or name (e.g., "11155111", "ethereum", "base", "bsc", "polygon", "arbitrum")
+          example: "11155111"
         toChain:
           type: string
-          description: Destination blockchain name (e.g., "near", "near-testnet")
-          enum: ["near", "near-testnet"]
-          example: "near-testnet"
+          description: Destination blockchain chain ID or name (e.g., "398", "near", "near-testnet")
+          example: "398"
         secretHash:
           type: string
-          description: Secret hash for HTLC
+          description: Secret hash for the order
 
     SubmitSignedOrderRequest:
       type: object
@@ -959,7 +675,7 @@ components:
       properties:
         orderHash:
           type: string
-          pattern: "^[a-fA-F0-9]{64}$"
+          pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
           description: Order hash from /orders/prepare
         signature:
           type: string
@@ -969,42 +685,22 @@ components:
     ClaimOrderRequest:
       type: object
       required:
-        - orderHash
         - resolverAddress
-        - estimatedGas
-        - signature
       properties:
-        orderHash:
-          type: string
-          pattern: "^[a-fA-F0-9]{64}$"
-          description: Order hash to claim
         resolverAddress:
           type: string
           pattern: "^0x[a-fA-F0-9]{40}$"
           description: Resolver's address
-        estimatedGas:
-          type: integer
-          description: Estimated gas cost for execution
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Resolver's signature
 
     EscrowDeploymentConfirmation:
       type: object
       required:
-        - orderHash
         - escrowType
         - escrowAddress
         - transactionHash
         - blockNumber
         - resolverAddress
-        - signature
       properties:
-        orderHash:
-          type: string
-          pattern: "^[a-fA-F0-9]{64}$"
-          description: Order hash for which escrow was deployed
         escrowType:
           type: string
           enum: [src, dst]
@@ -1018,25 +714,6 @@ components:
         blockNumber:
           type: integer
           description: Block number of deployment
-        resolverAddress:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{40}$"
-          description: Resolver's address
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Resolver's signature
-
-    UpdateOrderStateRequest:
-      type: object
-      required:
-        - newState
-        - resolverAddress
-      properties:
-        newState:
-          type: string
-          enum: [waiting-for-secret, completed, failed, cancelled]
-          description: New order state
         resolverAddress:
           type: string
           pattern: "^0x[a-fA-F0-9]{40}$"
@@ -1083,352 +760,16 @@ components:
           format: int64
           description: Unix timestamp of the response
 
-    LegacyOrderRequest:
-      type: object
-      required:
-        - sourceChain
-        - destinationChain
-        - sourceToken
-        - destinationToken
-        - sourceAmount
-        - destinationAmount
-        - timeout
-        - signature
-        - nonce
-      properties:
-        sourceChain:
-          type: string
-          description: Source blockchain name
-          enum: ["ethereum", "base", "bsc", "polygon", "arbitrum"]
-          example: "ethereum"
-        destinationChain:
-          type: string
-          description: Destination blockchain name
-          enum: ["near", "near-testnet"]
-          example: "near-testnet"
-        sourceToken:
-          type: string
-          description: Source token symbol or address
-        destinationToken:
-          type: string
-          description: Destination token symbol or address
-        sourceAmount:
-          type: string
-          description: Amount to swap from source chain (in wei/smallest unit)
-        destinationAmount:
-          type: string
-          description: Expected amount on destination chain
-        timeout:
-          type: integer
-          format: int64
-          description: Order timeout timestamp
-        auctionDuration:
-          type: integer
-          description: Duration of auction in milliseconds (optional)
-        initialRateBump:
-          type: integer
-          description: Initial rate bump in basis points (optional)
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Maker's signature
-        nonce:
-          type: string
-          description: Unique nonce for the order
-
-    SDKOrderRequest:
-      type: object
-      required:
-        - sdkOrder
-        - signature
-      properties:
-        sdkOrder:
-          type: object
-          description: SDK-formatted order with enhanced features
-          properties:
-            orderInfo:
-              type: object
-              properties:
-                srcChainId:
-                  type: string
-                dstChainId:
-                  type: string
-                srcToken:
-                  type: string
-                dstToken:
-                  type: string
-                srcAmount:
-                  type: string
-                dstAmount:
-                  type: string
-            auctionDetails:
-              type: object
-              properties:
-                points:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      delay:
-                        type: integer
-                      coefficient:
-                        type: number
-            settlementInfo:
-              type: object
-              properties:
-                hashLock:
-                  type: object
-                  properties:
-                    merkleRoot:
-                      type: string
-                    merkleLeaves:
-                      type: array
-                      items:
-                        type: string
-                    secretHash:
-                      type: string
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Order signature
-
-    ResolverBidRequest:
-      type: object
-      required:
-        - orderHash
-        - resolver
-        - estimatedGas
-        - signature
-      properties:
-        orderHash:
-          type: string
-          pattern: "^[a-fA-F0-9]{64}$"
-          description: Hash of the order to bid on
-        resolver:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{40}$"
-          description: Resolver's address
-        estimatedGas:
-          type: integer
-          description: Estimated gas cost for execution
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Resolver's signature
-
     SecretRevealRequest:
       type: object
       required:
-        - orderHash
         - secret
-        - proof
-        - signature
       properties:
-        orderHash:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{64}$"
-          description: Hash of the order
         secret:
           type: string
-          description: Secret value for HTLC unlocking
-        proof:
-          type: string
-          description: Merkle proof (for partial fills) or verification proof
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Requester's signature
-
-    RegisterResolverRequest:
-      type: object
-      required:
-        - address
-        - isKyc
-      properties:
-        address:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{40}$"
-          description: Resolver's Ethereum address
-        isKyc:
-          type: boolean
-          description: Whether the resolver is KYC verified
-        bondAmount:
-          type: string
-          description: Bond amount staked by resolver (optional)
-        tier:
-          type: integer
-          minimum: 1
-          maximum: 5
-          description: Resolver tier (1-5, optional)
-        reputation:
-          type: integer
-          minimum: 0
-          maximum: 100
-          description: Reputation score (0-100, optional)
-
-    OrderStatus:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        phase:
-          type: string
-          enum:
-            [
-              submitted,
-              claimed,
-              src_escrow_deployed,
-              dst_escrow_deployed,
-              waiting-for-secret,
-              completed,
-            ]
-        sourceEscrow:
-          $ref: "#/components/schemas/EscrowDetails"
-        destinationEscrow:
-          $ref: "#/components/schemas/EscrowDetails"
-        auction:
-          $ref: "#/components/schemas/DutchAuctionState"
-        secret:
-          $ref: "#/components/schemas/SecretManagement"
-        timelock:
-          $ref: "#/components/schemas/TimelockPhase"
-        isCompleted:
-          type: boolean
-        error:
-          type: string
-        events:
-          type: array
-          items:
-            $ref: "#/components/schemas/OrderEvent"
-
-    EscrowDetails:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        chain:
-          type: string
-        contractAddress:
-          type: string
-        secretHash:
-          type: string
-        amount:
-          type: string
-        timeout:
-          type: integer
-        creator:
-          type: string
-        designated:
-          type: string
-        isCreated:
-          type: boolean
-        isWithdrawn:
-          type: boolean
-        isCancelled:
-          type: boolean
-        createdAt:
-          type: integer
-        withdrawnAt:
-          type: integer
-        cancelledAt:
-          type: integer
-        transactionHash:
-          type: string
-
-    DutchAuctionState:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        startTime:
-          type: integer
-        duration:
-          type: integer
-        initialRateBump:
-          type: integer
-        currentRate:
-          type: number
-        isActive:
-          type: boolean
-        winner:
-          type: string
-        finalRate:
-          type: number
-        participatingResolvers:
-          type: array
-          items:
-            type: string
-
-    SecretManagement:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        secret:
-          type: string
-        secretHash:
-          type: string
-        isRevealed:
-          type: boolean
-        revealedAt:
-          type: integer
-        revealedBy:
-          type: string
-        merkleTree:
-          type: object
-          description: Merkle tree structure for secret management (if applicable)
-
-    TimelockPhase:
-      type: object
-      properties:
-        phase:
-          type: string
-          enum:
-            [
-              submitted,
-              claimed,
-              src_escrow_deployed,
-              dst_escrow_deployed,
-              waiting-for-secret,
-              completed,
-            ]
-        orderHash:
-          type: string
-        startTime:
-          type: integer
-        endTime:
-          type: integer
-        isActive:
-          type: boolean
-        nextPhase:
-          type: string
-
-    OrderEvent:
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-            [
-              order_created,
-              order_updates,
-              auction_started,
-              auction_progress,
-              auction_won,
-              phase_transition,
-              secret_revealed,
-              order_completed,
-              order_cancelled,
-              error,
-            ]
-        timestamp:
-          type: integer
-        data:
-          type: object
-        transactionHash:
-          type: string
-        blockNumber:
-          type: integer
+          description: |
+            Secret value for order completion (32-byte hex string).
+            This is the actual random number/secret that was used to generate the secretHash in the order.
 
   responses:
     BadRequest:
@@ -1474,12 +815,10 @@ components:
 tags:
   - name: Documentation
     description: API documentation and service information
-  - name: Health
-    description: Service health and status monitoring
   - name: Orders
     description: Cross-chain swap order management
   - name: Resolvers
-    description: Resolver registration and bidding
+    description: Resolver order claiming and escrow deployment
   - name: Security
     description: Escrow verification and secure secret management
   - name: WebSocket

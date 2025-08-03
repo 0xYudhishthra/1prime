@@ -1,14 +1,14 @@
 use std::{env, str::FromStr, sync::LazyLock};
 use borsh::BorshDeserialize;
 use k256::{elliptic_curve::rand_core::le, sha2::Sha256};
-use near_api::{Account, AccountId, Chain};
+use near_api::{Account, AccountId, Chain, NearToken};
 use near_crypto::ED25519PublicKey;
-use omni_transaction::{near::{types::{Action, BlockHash, ED25519Signature, FunctionCallAction, GlobalContractIdentifier, NonDelegateAction, Signature, UseGlobalContractAction, U128, U64}, utils::PublicKeyStrExt}, TransactionBuilder, TxBuilder, NEAR};
+use omni_transaction::{near::{types::{Action, BlockHash, CreateAccountAction, DeleteAccountAction, ED25519Signature, FunctionCallAction, GlobalContractIdentifier, NonDelegateAction, Signature, TransferAction, UseGlobalContractAction, U128, U64}, utils::PublicKeyStrExt}, TransactionBuilder, TxBuilder, NEAR};
 use serde_json::json;
 use sha3::Digest;
 use near_primitives::action::base64;
 
-use crate::{routes::near::get_address::{get_funding_near_address, get_funding_near_public_key}, utils::json_bytes};
+use crate::{agent::{agent_account_id, AgentConfig}, routes::near::get_address::{get_funding_near_address, get_funding_near_public_key, get_holding_near_address, get_holding_near_public_key}, utils::json_bytes};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -57,7 +57,37 @@ pub struct Immutables {
     pub timelocks: Timelocks,
 }
 
-pub async fn get_signature(encoded_tx: Vec<u8>) -> Option<Signature> {
+pub async fn construct_sample_order() -> Order {
+    let order = Order {
+        maker: AccountId::from_str("victorevolves.testnet").unwrap(),
+        taker: AccountId::from_str(&get_funding_near_address().await).unwrap(),
+        making_amount: 10, // 1 NEAR
+        taking_amount: 10, // 1 ETH
+        maker_asset: AccountId::from_str("3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af").unwrap(),
+        taker_asset: AccountId::from_str("3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af").unwrap().to_string(), // Example ETH address
+        salt: "example-salt".to_string(),
+        extension: OrderExtension {
+            hashlock: "example-hashlock".to_string(),
+            src_chain_id: 11155111, // Sepolia Testnet Chain ID
+            dst_chain_id: 1, // Mainnet Chain ID
+            src_safety_deposit: NearToken::from_yoctonear(10000).as_yoctonear(), // 0.01 NEAR
+            dst_safety_deposit: 10000000000000000, // 0.01 ETH
+            timelocks: Timelocks {
+                deployed_at: 1700000000, // Example timestamp
+                src_withdrawal: 3600,
+                src_public_withdrawal: 7200,
+                src_cancellation: 10800,
+                src_public_cancellation: 14400,
+                dst_withdrawal: 3600,
+                dst_public_withdrawal: 7200,
+                dst_cancellation: 10800,
+            },
+        },
+    };
+    order
+}
+
+pub async fn get_signature(encoded_tx: Vec<u8>, path: &str) -> Option<Signature> {
     let transaction_hash = Sha256::digest(&encoded_tx);
     let hash_hex = hex::encode(transaction_hash);
     
@@ -65,7 +95,7 @@ pub async fn get_signature(encoded_tx: Vec<u8>) -> Option<Signature> {
     
     // Now use this hash for signing with your agent
     let request_signature_result = crate::agent::request_signature(
-        "oneprime-funding-eth", // or your NEAR key identifier
+        path,
         &hash_hex,
         Some("Eddsa"),
         &crate::agent::AgentConfig::from_env()
@@ -88,7 +118,15 @@ pub async fn get_signature(encoded_tx: Vec<u8>) -> Option<Signature> {
     Some(Signature::ED25519(ED25519Signature::try_from_slice(&signature_array).unwrap()))
 }
 
-pub async fn send_transaction(signed_tx: Vec<u8>, signer_id: String) {
+pub async fn request_sign_funding(encoded_tx: Vec<u8>) -> Option<Signature> {
+    get_signature(encoded_tx, "oneprime-funding-eth").await
+}
+
+pub async fn request_sign_holding(encoded_tx: Vec<u8>) -> Option<Signature> {
+    get_signature(encoded_tx, "oneprime-holding-eth").await
+}
+
+pub async fn send_transaction(signed_tx: Vec<u8>, signer_id: String){
     let base64_tx = base64(&signed_tx);
     println!("{}", base64_tx);
 
@@ -125,6 +163,119 @@ pub async fn send_transaction(signed_tx: Vec<u8>, signer_id: String) {
     }
 }
 
+pub async fn create_near_funding_account() {
+
+    let signer_id = get_funding_near_address().await;
+
+    let block_hash = Chain::block_hash().fetch_from_testnet().await.unwrap();
+    
+    let signer_account_id = AccountId::from_str(&signer_id.clone()).expect("Invalid NEAR account ID");
+    let signer_public_key = get_funding_near_public_key().await;
+    let signer_public_key_bytes: [u8; 32] = signer_public_key.to_public_key_as_bytes()
+        .expect("Failed to get public key bytes")
+        .try_into()
+        .expect("Public key must be exactly 32 bytes");
+
+    let result: reqwest::Response = Account::create_account(signer_account_id.clone()).sponsor_by_faucet_service()
+    .public_key(near_crypto::PublicKey::ED25519(ED25519PublicKey(signer_public_key_bytes))).unwrap().send_to_testnet_faucet().await.unwrap();
+
+    println!("{:?}", result);
+}
+
+
+
+pub async fn delete_near_account() {
+    let signer_id = get_funding_near_address().await;
+
+    let block_hash = Chain::block_hash().fetch_from_testnet().await.unwrap();
+    
+    let signer_account_id = AccountId::from_str(&signer_id.clone()).expect("Invalid NEAR account ID");
+    let signer_public_key = get_funding_near_public_key().await;
+    let signer_public_key_bytes: [u8; 32] = signer_public_key.to_public_key_as_bytes()
+        .expect("Failed to get public key bytes")
+        .try_into()
+        .expect("Public key must be exactly 32 bytes");
+
+    
+    let nonce_data = Account(signer_account_id.clone())
+            .access_key(
+                near_crypto::PublicKey::ED25519(ED25519PublicKey(signer_public_key_bytes))
+            )
+            .fetch_from_testnet()
+            .await;
+    
+    if (nonce_data.is_err()) {
+        println!("{:?}", "Account is already deleted!");
+        return;
+    }
+    
+
+    let mut nonce = U64(nonce_data.unwrap().data.nonce);
+
+    /// deploy resolver contract by referencing the global contract code
+    let delete_account_action = Action::DeleteAccount(DeleteAccountAction {
+        beneficiary_id: AccountId::from_str(&get_holding_near_address().await).unwrap()
+    });
+
+    let actions = vec![delete_account_action];
+
+    let near_tx = omni_transaction::TransactionBuilder::new::<NEAR>()
+        .signer_id(signer_id.clone())
+        .receiver_id(signer_id.clone())
+        .nonce(nonce.0 + 1)
+        .actions(actions)
+        .block_hash(BlockHash(block_hash.0))
+        .signer_public_key(signer_public_key.to_public_key().unwrap())
+        .build();
+
+    let encoded_tx = near_tx.build_for_signing();
+    let signature = request_sign_funding(encoded_tx).await.expect("Failed to get signature");
+    let signed_tx = near_tx.build_with_signature(signature);
+    send_transaction(signed_tx, signer_id).await;
+}
+
+pub async fn setup_near_account_from_agent() {
+
+    let block_hash = Chain::block_hash().fetch_from_testnet().await.unwrap();
+
+    let signer_account_id = AccountId::from_str(get_holding_near_address().await.to_string().as_str()).unwrap();
+    let signer_public_key = get_holding_near_public_key().await;
+    let signer_public_key_bytes: [u8; 32] = signer_public_key.to_public_key_as_bytes()
+        .expect("Failed to get public key bytes")
+        .try_into()
+        .expect("Public key must be exactly 32 bytes");
+
+    
+    let nonce_data = Account(signer_account_id.clone())
+            .access_key(
+                near_crypto::PublicKey::ED25519(ED25519PublicKey(signer_public_key_bytes))
+            )
+            .fetch_from_testnet()
+            .await.unwrap();
+
+    let mut nonce = U64(nonce_data.data.nonce);
+    let transfer_amount = NearToken::from_near(8);
+
+    /// deploy resolver contract by referencing the global contract code
+    let transfer_action = Action::Transfer(TransferAction {deposit: U128(transfer_amount.as_yoctonear())});
+    let actions = vec![transfer_action];
+
+    let near_tx = omni_transaction::TransactionBuilder::new::<NEAR>()
+        .signer_id(signer_account_id.clone().to_string())
+        .receiver_id(get_funding_near_address().await)
+        .nonce(nonce.0 + 1)
+        .actions(actions)
+        .block_hash(BlockHash(block_hash.0))
+        .signer_public_key(signer_public_key.to_public_key().unwrap())
+        .build();
+
+    let encoded_tx = near_tx.build_for_signing();
+    let signature = request_sign_holding(encoded_tx).await.expect("Failed to get signature");
+    let signed_tx = near_tx.build_with_signature(signature);
+
+    send_transaction(signed_tx, signer_account_id.to_string()).await;
+}
+
 /// deploy resolver contract if it doesn't exist
 pub async fn deploy_near_resolver_contract() {
     /// Deploy Resolver Contract
@@ -140,6 +291,7 @@ pub async fn deploy_near_resolver_contract() {
         .try_into()
         .expect("Public key must be exactly 32 bytes");
 
+    
     let nonce_data = Account(signer_account_id.clone())
             .access_key(
                 near_crypto::PublicKey::ED25519(ED25519PublicKey(signer_public_key_bytes))
@@ -164,7 +316,7 @@ pub async fn deploy_near_resolver_contract() {
             args: json_bytes(json!(
                 {
                     "owner": signer_id.clone(),
-                    "escrow_factory": "1prime-global-factory.testnet",
+                    "escrow_factory": "1prime-global-factory-contract.testnet",
                     "dst_chain_resolver": "test"
                 }
             )),
@@ -185,7 +337,7 @@ pub async fn deploy_near_resolver_contract() {
         .build();
 
     let encoded_tx = near_tx.build_for_signing();
-    let signature = get_signature(encoded_tx).await.expect("Failed to get signature");
+    let signature = request_sign_funding(encoded_tx).await.expect("Failed to get signature");
     let signed_tx = near_tx.build_with_signature(signature);
     send_transaction(signed_tx, signer_id).await;
 }
@@ -223,7 +375,7 @@ pub async fn deploy_near_src_contract(order: Order, order_signature: String, amo
                 }
             )),
             gas: U64(300000000000000), // 30 TGas
-            deposit: U128(0)
+            deposit: U128(order.extension.src_safety_deposit + order.making_amount)
         }
     ));
 
@@ -239,7 +391,7 @@ pub async fn deploy_near_src_contract(order: Order, order_signature: String, amo
         .build();
 
     let encoded_tx = near_tx.build_for_signing();
-    let signature = get_signature(encoded_tx).await.expect("Failed to get signature");
+    let signature = request_sign_funding(encoded_tx).await.expect("Failed to get signature");
     let signed_tx = near_tx.build_with_signature(signature);
     send_transaction(signed_tx, signer_id).await;
 }
@@ -295,7 +447,7 @@ pub async fn deploy_near_dst_contract(
         .build();
 
     let encoded_tx = near_tx.build_for_signing();
-    let signature = get_signature(encoded_tx).await.expect("Failed to get signature");
+    let signature = request_sign_funding(encoded_tx).await.expect("Failed to get signature");
     let signed_tx = near_tx.build_with_signature(signature);
     send_transaction(signed_tx, signer_id).await;
 }

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "nixpacksPlan": {
+      "phases": {
+        "install": {
+          "dependsOn": ["setup"],
+          "cmds": [
+            "pnpm install --no-frozen-lockfile",
+            "cd packages/cross-chain-sdk && pnpm install --no-frozen-lockfile && pnpm build"
+          ]
+        }
+      }
+    }
+  }
+}
