@@ -32,23 +32,23 @@ echo -e "${YELLOW}📦 Building all contracts with cargo near build...${NC}"
 # Build each contract using cargo near build non-reproducible-wasm (for development)
 cd escrow-factory
 echo -e "${YELLOW}Building escrow-factory...${NC}"
-cargo near build reproducible-wasm
+cargo near build non-reproducible-wasm
 
 cd ../escrow-dst  
 echo -e "${YELLOW}Building escrow-dst (first pass)...${NC}"
-cargo near build reproducible-wasm
+cargo near build non-reproducible-wasm
 echo -e "${YELLOW}Building escrow-dst (second pass with WASM)...${NC}"
-cargo near build reproducible-wasm --features include-wasm
+cargo near build non-reproducible-wasm --features include-wasm
 
 cd ../escrow-src
 echo -e "${YELLOW}Building escrow-src (first pass)...${NC}"
-cargo near build reproducible-wasm
+cargo near build non-reproducible-wasm
 echo -e "${YELLOW}Building escrow-src (second pass with WASM)...${NC}"
-cargo near build reproducible-wasm --features include-wasm
+cargo near build non-reproducible-wasm --features include-wasm
 
 cd ../resolver
 echo -e "${YELLOW}Building resolver...${NC}"
-cargo near build reproducible-wasm
+cargo near build non-reproducible-wasm
 
 cd ..
 

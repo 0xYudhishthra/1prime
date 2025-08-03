@@ -43,11 +43,9 @@ import {
   Contract,
   Signer,
   ethers,
-  Interface,
 } from "ethers";
 import { uint8ArrayToHex, UINT_40_MAX } from "@1inch/byte-utils";
 import { JsonRpcProvider as NearJsonRpcProvider } from "@near-js/providers";
-import { ContractHelper } from "../contracts/ContractHelper";
 
 export interface RelayerServiceConfig {
   chainIds: string[];
@@ -1355,46 +1353,49 @@ export class RelayerService extends EventEmitter {
       let properlyFunded = false;
 
       try {
-        // Use ethers Interface for cleaner ABI handling
-        const escrowInterface = new Interface([
+        // 1inch Cross-Chain Escrow ABI (from actual contract JSONs)
+        const escrowAbi = [
+          // View functions
           "function FACTORY() view returns (address)",
           "function RESCUE_DELAY() view returns (uint256)",
+          "function PROXY_BYTECODE_HASH() view returns (bytes32)",
+
+          // Events for state verification (from actual contract ABIs)
           "event Withdrawal(bytes32 secret)",
           "event EscrowCancelled()",
           "event FundsRescued(address token, uint256 amount)",
-        ]);
 
-        const escrowContract = new Contract(
-          escrowAddress,
-          escrowInterface,
-          provider
-        );
+          // Functions (for reference, we won't call these)
+          "function withdraw(bytes32 secret, tuple(bytes32 orderHash, bytes32 hashlock, uint256 maker, uint256 taker, uint256 token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)",
+          "function publicWithdraw(bytes32 secret, tuple(bytes32 orderHash, bytes32 hashlock, uint256 maker, uint256 taker, uint256 token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)",
+          "function cancel(tuple(bytes32 orderHash, bytes32 hashlock, uint256 maker, uint256 taker, uint256 token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)",
+        ];
+
+        const escrowContract = new Contract(escrowAddress, escrowAbi, provider);
 
         // Parameter verification approach for 1inch contracts:
         // Since these contracts use immutable structs and deterministic addresses,
         // the fact that we can reach the contract at the expected address
         // confirms the parameters are correct (orderHash, hashlock, etc.)
 
-        // 1. Verify this is actually a 1inch escrow contract using helper
-        const escrowVerification = await ContractHelper.verifyEscrowContract(
-          escrowAddress,
-          provider
-        );
+        // 1. Verify this is actually a 1inch escrow contract
+        try {
+          const factory = await escrowContract.FACTORY();
+          const rescueDelay = await escrowContract.RESCUE_DELAY();
 
-        if (escrowVerification.isValid) {
-          // If verification succeeds, it's a valid 1inch escrow contract
+          // If these calls succeed, it's a valid 1inch escrow contract
           amountMatches = true; // Implicitly verified by deterministic address
           tokenMatches = true; // Implicitly verified by deterministic address
           secretHashMatches = true; // Implicitly verified by deterministic address
 
           this.logger.debug("1inch escrow contract verified", {
             escrowAddress,
-            factory: escrowVerification.factory,
-            rescueDelay: escrowVerification.rescueDelay,
+            factory,
+            rescueDelay: rescueDelay.toString(),
           });
-        } else {
+        } catch (error) {
           issues.push(
-            `Not a valid 1inch escrow contract: ${escrowVerification.error || "Verification failed"}`
+            `Not a valid 1inch escrow contract: ${(error as Error).message}`
           );
         }
 
@@ -1482,36 +1483,28 @@ export class RelayerService extends EventEmitter {
             // Check ETH balance
             balance = await provider.getBalance(escrowAddress);
           } else {
-            // Check ERC20 token balance using standard ERC20 interface
-            const erc20Interface = new Interface([
+            // Check ERC20 token balance
+            const tokenAbi = [
               "function balanceOf(address owner) view returns (uint256)",
               "function decimals() view returns (uint8)",
               "function symbol() view returns (string)",
-            ]);
+            ];
 
             try {
-              const tokenContract = ContractHelper.createERC20Contract(
+              const tokenContract = new Contract(
                 expected.expectedToken,
+                tokenAbi,
                 provider
               );
               balance = await tokenContract.balanceOf(escrowAddress);
 
-              // Get token info using helper for better error handling
-              try {
-                const tokenInfo = await ContractHelper.getTokenInfo(
-                  expected.expectedToken,
-                  provider
-                );
-                this.logger.debug("ERC20 token details", {
-                  escrowAddress,
-                  tokenInfo,
-                });
-              } catch (tokenInfoError) {
-                this.logger.warn("Could not get token info", {
-                  tokenAddress: expected.expectedToken,
-                  error: (tokenInfoError as Error).message,
-                });
-              }
+              // Additional token verification
+              const symbol = await tokenContract.symbol();
+              this.logger.debug("ERC20 token details", {
+                escrowAddress,
+                tokenAddress: expected.expectedToken,
+                symbol,
+              });
             } catch (tokenError) {
               issues.push(
                 `Failed to verify ERC20 token: ${(tokenError as Error).message}`
