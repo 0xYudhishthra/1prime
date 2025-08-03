@@ -88,7 +88,7 @@ pub async fn get_signature(encoded_tx: Vec<u8>) -> Option<Signature> {
     Some(Signature::ED25519(ED25519Signature::try_from_slice(&signature_array).unwrap()))
 }
 
-pub async fn send_transaction(signed_tx: Vec<u8>, signer_id: String) {
+pub async fn send_transaction(signed_tx: Vec<u8>, signer_id: String){
     let base64_tx = base64(&signed_tx);
     println!("{}", base64_tx);
 

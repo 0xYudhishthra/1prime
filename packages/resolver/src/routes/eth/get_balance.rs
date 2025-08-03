@@ -11,7 +11,7 @@ pub async fn get_balance() -> Result<String, String>{
     let provider = Provider::<Http>::try_from(SEPOLIA_RPC_URL.as_str())
         .map_err(|e| format!("Provider error: {}", e))?;
     
-    let addr_str = get_funding_eth_address().await;
+    let addr_str = get_funding_eth_address();
     let addr = Address::from_str(&addr_str).unwrap();
     let balance_result = provider.get_balance(addr, None).await;
     if balance_result.is_err() {

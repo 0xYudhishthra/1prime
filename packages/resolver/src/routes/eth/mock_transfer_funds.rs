@@ -24,7 +24,7 @@ pub async fn mock_transfer_funds() -> String{
    let gas_limit: u128 = 21_000;
    let chain_id: u64 = 11155111; // Sepolia Testnet Chain ID
    
-   let from_address_str = get_funding_eth_address().await;
+   let from_address_str = get_funding_eth_address();
    let from_address = Address::from_str(&from_address_str).unwrap();
    
    let nonce = provider.get_transaction_count(from_address, None).await.unwrap();
