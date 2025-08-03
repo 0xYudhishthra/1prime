@@ -60,8 +60,8 @@ export class TimelockManager extends EventEmitter {
       const announcementPhase: TimelockPhase = {
         phase: "announcement",
         orderHash: order.orderHash,
-        startTime: order.auctionStartTime,
-        endTime: order.auctionStartTime + order.auctionDuration,
+        startTime: Date.now(),
+        endTime: Date.now() + 3600000, // 1 hour
         isActive: true,
         nextPhase: "deposit",
       };

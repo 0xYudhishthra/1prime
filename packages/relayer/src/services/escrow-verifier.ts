@@ -83,9 +83,9 @@ export class EscrowVerifier extends EventEmitter {
 
       // Verify source chain escrow
       try {
-        // Skip HTLC verification since we're not using HTLC contracts
+        // Skip complex escrow verification for simplified flow
         this.logger.info(
-          "Skipping source escrow verification - HTLC not used",
+          "Skipping source escrow verification - simplified flow",
           {
             orderHash: order.orderHash,
           }
@@ -101,9 +101,9 @@ export class EscrowVerifier extends EventEmitter {
 
       // Verify destination chain escrow
       try {
-        // Skip HTLC verification since we're not using HTLC contracts
+        // Skip complex escrow verification for simplified flow
         this.logger.info(
-          "Skipping destination escrow verification - HTLC not used",
+          "Skipping destination escrow verification - simplified flow",
           {
             orderHash: order.orderHash,
           }
@@ -321,7 +321,7 @@ export class EscrowVerifier extends EventEmitter {
     }
 
     try {
-      // In the per-swap HTLC architecture, contracts are deployed dynamically
+      // In the per-swap escrow architecture, contracts are deployed dynamically
       // by resolvers during Phase 2. No static contract verification needed.
       // Just verify that the adapter is properly initialized and chain is accessible.
 

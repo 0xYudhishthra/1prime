@@ -1,11 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { Logger } from "winston";
-import {
-  FusionOrder,
-  OrderStatus,
-  OrderEvent,
-  DutchAuctionState,
-} from "../types";
+import { FusionOrder, OrderStatus, OrderEvent } from "../types";
 
 export interface DatabaseConfig {
   supabaseUrl: string;
@@ -16,7 +11,6 @@ export interface OrderRecord extends FusionOrder {
   status: OrderStatus;
   createdAt: number;
   updatedAt: number;
-  auctionState?: DutchAuctionState;
   events: OrderEvent[];
 }
 
@@ -80,8 +74,7 @@ export class DatabaseService {
         destinationAmount: order.destinationAmount || "0",
         secretHash: order.secretHash || "",
         timeout: order.timeout || Date.now() + 3600000,
-        auctionStartTime: order.auctionStartTime || Date.now(),
-        auctionDuration: order.auctionDuration || 120000,
+
         initialRateBump: order.initialRateBump || 1000,
         signature: order.signature || "",
         nonce: order.nonce || "",
@@ -184,18 +177,13 @@ export class DatabaseService {
 
   async updateOrderStatus(
     orderHash: string,
-    status: OrderStatus,
-    auctionState?: DutchAuctionState
+    status: OrderStatus
   ): Promise<void> {
     try {
       const updateData: Partial<OrderRecord> = {
         status,
         updatedAt: Date.now(),
       };
-
-      if (auctionState) {
-        updateData.auctionState = auctionState;
-      }
 
       const { error } = await this.supabase
         .from("orders")
@@ -209,7 +197,6 @@ export class DatabaseService {
       this.logger.info("Order status updated", {
         orderHash,
         status,
-        hasAuctionState: !!auctionState,
       });
     } catch (error) {
       this.logger.error("Failed to update order status", {

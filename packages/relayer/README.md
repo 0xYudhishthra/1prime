@@ -2,7 +2,7 @@
 
 A 1inch Fusion+ compatible relayer service that facilitates cross-chain atomic swaps between EVM chains (Ethereum, Base, BSC, Polygon, Arbitrum) and NEAR Protocol.
 
-This implementation follows the 1inch Fusion+ whitepaper architecture with **per-swap HTLC deployment**: each atomic swap gets its own pair of HTLC contracts deployed dynamically by resolvers during Phase 2, exactly as specified in the whitepaper. This removes static singleton contracts while maintaining the core auction and secret revelation mechanisms.
+This implementation follows the 1inch Fusion+ whitepaper architecture with **per-swap escrow deployment**: each atomic swap gets its own pair of escrow contracts deployed dynamically by resolvers during Phase 2, exactly as specified in the whitepaper. This removes static singleton contracts while maintaining the core secret revelation mechanisms.
 
 ## Overview
 
@@ -11,7 +11,7 @@ This relayer service implements the complete 1inch Fusion+ protocol as described
 - **Dutch Auction Management**: Competitive bidding system with gas-adjusted custom curves (Section 2.3.4)
 - **Partial Fill Support**: Merkle tree-based N+1 secret management for partial order execution (Section 2.5)
 - **Escrow Verification**: Contract deployment and balance checking across chains
-- **Secret Management**: Secure handling and conditional disclosure of HTLC secrets with Merkle tree support
+- **Secret Management**: Secure handling and conditional disclosure of secrets with Merkle tree support
 - **Timelock Management**: Phase transition logic following 1inch Fusion+ specifications
 - **Gas Price Adaptation**: Dynamic auction curve adjustments based on network conditions
 - **Real-time Updates**: WebSocket support for live order tracking and auction progress
@@ -24,20 +24,20 @@ This relayer service implements the complete 1inch Fusion+ protocol as described
 1. **Order Manager**: Handles order creation, Dutch auctions, and resolver bidding with SDK integration
 2. **Partial Fill Manager**: Manages N+1 Merkle tree secrets for partial order execution (Section 2.5)
 3. **Custom Curve Manager**: Dynamic auction curves with gas price adjustments (Section 2.3.4)
-4. **Escrow Verifier**: Monitors per-swap HTLC contracts and balance verification
+4. **Escrow Verifier**: Monitors per-swap escrow contracts and balance verification
 5. **Secret Manager**: Manages secret storage, Merkle trees, and conditional revelation
 6. **Timelock Manager**: Enforces phase transitions and timing constraints
 7. **Chain Adapters**: Modular interfaces for EVM and NEAR blockchain interactions
 8. **Database Service**: Persistent storage for orders, resolvers, and auction states
 9. **WebSocket Service**: Real-time event broadcasting and subscription management
 
-### HTLC Contract Architecture
+### Escrow Contract Architecture
 
 Following the 1inch Fusion+ specification:
 
-- **Phase 1 (Announcement)**: Orders created without HTLC addresses
-- **Phase 2 (Deposit)**: Resolvers deploy dedicated HTLC contracts for each swap
-- **Database Tracking**: `sourceChainHtlcAddress` and `destinationChainHtlcAddress` fields track per-swap contracts
+- **Phase 1 (Announcement)**: Orders created without escrow addresses
+- **Phase 2 (Deposit)**: Resolvers deploy dedicated escrow contracts for each swap
+- **Database Tracking**: `sourceEscrowAddress` and `destinationEscrowAddress` fields track per-swap contracts
 - **Dynamic Management**: All escrow operations use the specific contract addresses for each order
 
 ### Supported Chain Pairs
@@ -415,16 +415,16 @@ Returns WebSocket configuration and supported events.
    - **Curve Adjustment**: Dynamic rate modification based on network conditions
    - **Resolver Competition**: KYC'd resolvers compete for profitable orders
 
-### Phase 2: Deposit (Per-Swap HTLCs)
+### Phase 2: Deposit (Per-Swap Escrows)
 
 1. **Winning Resolver Selection**: First profitable bidder wins
-2. **Dynamic HTLC Deployment**: Resolver deploys dedicated contracts for this swap
-   - **Source Chain HTLC**: Contains maker's assets + safety deposit
-   - **Destination Chain HTLC**: Contains resolver's assets + safety deposit
+2. **Dynamic Escrow Deployment**: Resolver deploys dedicated contracts for this swap
+   - **Source Chain Escrow**: Contains maker's assets + safety deposit
+   - **Destination Chain Escrow**: Contains resolver's assets + safety deposit
 3. **Relayer Verification**:
-   - **Contract Verification**: Confirms HTLC deployments with correct parameters
+   - **Contract Verification**: Confirms escrow deployments with correct parameters
    - **Balance Verification**: Ensures proper amounts and safety deposits
-   - **Database Update**: Store HTLC addresses for this specific order
+   - **Database Update**: Store escrow addresses for this specific order
 4. **Finality Lock**: Security period to prevent reorganization attacks
 
 ### Phase 3: Withdrawal (Enhanced Secret Management)

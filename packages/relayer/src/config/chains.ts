@@ -5,7 +5,6 @@ export const DEFAULT_EVM_CONFIG: Partial<ChainConfig> = {
   blockTime: 12, // Ethereum average
   finalityBlocks: 64, // ~12.8 minutes
   gasLimit: {
-    htlcCreation: 200000,
     withdrawal: 150000,
     cancellation: 100000,
   },
@@ -16,7 +15,6 @@ export const DEFAULT_NEAR_CONFIG: Partial<ChainConfig> = {
   blockTime: 1, // NEAR average
   finalityBlocks: 3, // NEAR finality is fast
   gasLimit: {
-    htlcCreation: 300000000000000, // 300 TGas
     withdrawal: 200000000000000, // 200 TGas
     cancellation: 100000000000000, // 100 TGas
   },
@@ -113,7 +111,7 @@ export const SUPPORTED_CHAIN_PAIRS = [
 export const getChainConfig = (chainId: string): ChainConfig => {
   console.log("chainId", chainId);
   const config = CHAIN_CONFIGS[chainId];
-  
+
   if (!config) {
     throw new Error(`Unsupported chain: ${chainId}`);
   }

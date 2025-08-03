@@ -3,12 +3,10 @@ import type { Logger } from "winston";
 import {
   FusionOrder,
   FusionOrderExtended,
-  DutchAuctionState,
   OrderStatus,
   OrderEvent,
   TimelockPhase,
   RelayerStatus,
-  ResolverBidRequest,
 } from "../types";
 import { createHash } from "crypto";
 import { PartialFillManager } from "./partial-fill-manager";
@@ -18,8 +16,7 @@ export class OrderManager extends EventEmitter {
   private logger: Logger;
   private orders: Map<string, FusionOrder> = new Map();
   private orderStatuses: Map<string, OrderStatus> = new Map();
-  private auctions: Map<string, DutchAuctionState> = new Map();
-  private resolvers: Map<string, RelayerStatus> = new Map();
+
 
   // Enhanced managers for partial fills and custom curves
   private partialFillManager: PartialFillManager;
@@ -57,8 +54,7 @@ export class OrderManager extends EventEmitter {
         destinationAmount: fusionOrder.destinationAmount,
         secretHash: fusionOrder.secretHash,
         timeout: fusionOrder.timeout,
-        auctionStartTime: fusionOrder.auctionStartTime,
-        auctionDuration: fusionOrder.auctionDuration,
+
         initialRateBump: fusionOrder.initialRateBump,
         signature: fusionOrder.signature,
         nonce: fusionOrder.nonce,
@@ -105,7 +101,7 @@ export class OrderManager extends EventEmitter {
         srcSafetyDeposit: fusionOrder.srcSafetyDeposit,
         dstSafetyDeposit: fusionOrder.dstSafetyDeposit,
         supportsPartialFills: fusionOrder.allowPartialFills,
-        hasCustomCurve: !!fusionOrder.enhancedAuctionDetails?.points.length,
+        hasCustomCurve: false, // Simplified without auction details
       });
       this.emit("order_created", baseFusionOrder);
 
@@ -119,82 +115,13 @@ export class OrderManager extends EventEmitter {
     }
   }
 
-  async submitResolverBid(bid: ResolverBidRequest): Promise<boolean> {
-    try {
-      const order = this.orders.get(bid.orderHash);
-      if (!order) {
-        throw new Error(`Order not found: ${bid.orderHash}`);
-      }
-
-      const auction = this.auctions.get(bid.orderHash);
-      if (!auction || !auction.isActive) {
-        throw new Error(`Auction not active for order: ${bid.orderHash}`);
-      }
-
-      const resolver = this.resolvers.get(bid.resolver);
-      if (!resolver) {
-        throw new Error(`Resolver not registered: ${bid.resolver}`);
-      }
-
-      // Validate resolver is KYC approved
-      if (!resolver.isKyc) {
-        throw new Error("Resolver must be KYC approved to participate");
-      }
-
-      // Calculate current auction price
-      const currentRate = this.calculateCurrentAuctionRate(auction);
-
-      // Check if bid is profitable for resolver
-      const gasEstimate = bid.estimatedGas;
-      const isProfitable = this.isBidProfitable(
-        order,
-        currentRate,
-        gasEstimate
-      );
-
-      if (!isProfitable) {
-        this.logger.warn("Bid not profitable", {
-          orderHash: bid.orderHash,
-          resolver: bid.resolver,
-        });
-        return false;
-      }
-
-      // Accept the bid - first profitable bid wins
-      auction.winner = bid.resolver;
-      auction.finalRate = currentRate;
-      auction.isActive = false;
-
-      // Update order status
-      const orderStatus = this.orderStatuses.get(bid.orderHash)!;
-      orderStatus.phase = "deposit";
-      orderStatus.auction = auction;
-      orderStatus.events.push(
-        this.createOrderEvent("auction_started", {
-          winner: bid.resolver,
-          finalRate: currentRate,
-        })
-      );
-
-      this.logger.info("Auction won", {
-        orderHash: bid.orderHash,
-        winner: bid.resolver,
-        finalRate: currentRate,
-      });
-
-      this.emit("auction_won", {
-        orderHash: bid.orderHash,
-        winner: bid.resolver,
-        finalRate: currentRate,
-      });
-
-      return true;
-    } catch (error) {
-      this.logger.error("Failed to submit resolver bid", {
-        error: (error as Error).message,
-      });
-      throw error;
-    }
+  async submitResolverBid(bid: any): Promise<boolean> {
+    // Simplified - no auctions, just return true for single resolver
+    this.logger.info("Resolver bid accepted (simplified)", {
+      orderHash: bid.orderHash,
+      resolver: bid.resolver || "single-resolver",
+    });
+    return true;
   }
 
   async updateOrderPhase(
@@ -250,11 +177,7 @@ export class OrderManager extends EventEmitter {
       this.createOrderEvent("order_cancelled", { reason })
     );
 
-    // Stop auction if active
-    const auction = this.auctions.get(orderHash);
-    if (auction && auction.isActive) {
-      auction.isActive = false;
-    }
+    // No auction to stop - simplified flow
 
     this.logger.info("Order cancelled", { orderHash, reason });
     this.emit("order_cancelled", { orderHash, reason });
@@ -275,72 +198,21 @@ export class OrderManager extends EventEmitter {
     });
   }
 
-  getAuction(orderHash: string): DutchAuctionState | undefined {
-    return this.auctions.get(orderHash);
-  }
-
-  registerResolver(resolver: RelayerStatus): void {
-    this.resolvers.set(resolver.address, resolver);
-    this.logger.info("Resolver registered", {
-      address: resolver.address,
-      reputation: resolver.reputation,
-    });
+  getAuction(orderHash: string): any | undefined {
+    // Simplified - no auctions
+    return undefined;
   }
 
   private startDutchAuction(order: FusionOrder): void {
-    const auction: DutchAuctionState = {
+    // Simplified - no auctions
+    this.logger.info("Order ready for processing (no auction)", {
       orderHash: order.orderHash,
-      startTime: order.auctionStartTime,
-      duration: order.auctionDuration,
-      initialRateBump: order.initialRateBump,
-      currentRate: order.initialRateBump,
-      isActive: true,
-      participatingResolvers: [],
-    };
-
-    this.auctions.set(order.orderHash, auction);
-
-    // Start price decay timer
-    const priceUpdateInterval = setInterval(() => {
-      if (!auction.isActive) {
-        clearInterval(priceUpdateInterval);
-        return;
-      }
-
-      auction.currentRate = this.calculateCurrentAuctionRate(auction);
-
-      // Check if auction should end
-      if (Date.now() - auction.startTime > auction.duration) {
-        auction.isActive = false;
-        clearInterval(priceUpdateInterval);
-        this.logger.warn("Auction expired without winner", {
-          orderHash: order.orderHash,
-        });
-        this.emit("auction_expired", { orderHash: order.orderHash });
-      }
-    }, 1000); // Update every second
-
-    this.logger.info("Dutch auction started", {
-      orderHash: order.orderHash,
-      initialRateBump: order.initialRateBump,
     });
   }
 
-  private calculateCurrentAuctionRate(auction: DutchAuctionState): number {
-    // Try to use custom curve manager first (with gas adjustments)
-    const customRate = this.customCurveManager.calculateAdjustedRate(
-      auction.orderHash
-    );
-    if (customRate > 0) {
-      return customRate;
-    }
-
-    // Fallback to simple linear decay
-    const timeSinceStart = Date.now() - auction.startTime;
-    const progress = Math.min(timeSinceStart / auction.duration, 1);
-
-    const currentRate = auction.initialRateBump * (1 - progress);
-    return Math.max(currentRate, 0);
+  private calculateCurrentAuctionRate(auction: any): number {
+    // Simplified - no auctions, return default rate
+    return 0;
   }
 
   private isBidProfitable(
@@ -375,11 +247,7 @@ export class OrderManager extends EventEmitter {
       throw new Error("Invalid order: timeout must be in the future");
     }
 
-    if (order.auctionDuration < 30000 || order.auctionDuration > 300000) {
-      throw new Error(
-        "Invalid order: auction duration must be between 30s and 5min"
-      );
-    }
+    // Auction validation removed - no auctions
   }
 
   private validateSDKOrder(order: FusionOrderExtended): void {
@@ -413,32 +281,10 @@ export class OrderManager extends EventEmitter {
   }
 
   private startDutchAuctionFromSDK(order: FusionOrderExtended): void {
-    // Use enhanced auction details if available, otherwise fall back to base auction
-    const auctionDuration =
-      (order.enhancedAuctionDetails?.points?.length || 0) > 0
-        ? order.auctionDuration
-        : order.auctionDuration;
-
-    const auction: DutchAuctionState = {
+    // Simplified - no auctions
+    this.logger.info("SDK order ready for processing (no auction)", {
       orderHash: order.orderHash,
-      startTime: order.auctionStartTime,
-      duration: auctionDuration,
-      initialRateBump: order.initialRateBump,
-      currentRate: order.initialRateBump,
-      isActive: true,
-      participatingResolvers: [],
-    };
-
-    this.auctions.set(order.orderHash, auction);
-
-    this.logger.info("SDK Dutch auction started", {
-      orderHash: order.orderHash,
-      duration: auctionDuration,
-      initialRateBump: order.initialRateBump,
-      hasEnhancedPoints: !!order.enhancedAuctionDetails?.points.length,
     });
-
-    this.emit("auction_started", auction);
   }
 
   private createOrderEvent(type: OrderEvent["type"], data: any): OrderEvent {

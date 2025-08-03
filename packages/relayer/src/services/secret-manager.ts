@@ -21,7 +21,6 @@ export interface SecretRevealConditions {
 export class SecretManager extends EventEmitter {
   private logger: Logger;
   private secrets: Map<string, SecretManagement> = new Map();
-  private resolvers: Map<string, RelayerStatus> = new Map();
   private revealConditions: Map<string, SecretRevealConditions> = new Map();
   private revealTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
@@ -137,13 +136,9 @@ export class SecretManager extends EventEmitter {
         throw new Error(`Secret not found for order: ${request.orderHash}`);
       }
 
-      // Verify resolver is authorized
+      // Skip resolver authorization - operating with single resolver
       if (!request.signature) {
         throw new Error("Signature is required for secret reveal");
-      }
-      const resolver = this.resolvers.get(request.signature.split(":")[0]); // Simplified signature parsing
-      if (!resolver || !resolver.isKyc) {
-        throw new Error("Unauthorized resolver");
       }
 
       // Check reveal conditions
@@ -164,17 +159,17 @@ export class SecretManager extends EventEmitter {
       // Reveal the secret
       secretManagement.isRevealed = true;
       secretManagement.revealedAt = Date.now();
-      secretManagement.revealedBy = resolver.address;
+      secretManagement.revealedBy = "single-resolver"; // Simplified for single resolver operation
 
       this.logger.info("Secret revealed", {
         orderHash: request.orderHash,
-        revealedTo: resolver.address,
+        revealedTo: "single-resolver",
       });
 
       this.emit("secret_revealed", {
         orderHash: request.orderHash,
         secret: secretManagement.secret,
-        revealedTo: resolver.address,
+        revealedTo: "single-resolver",
       });
 
       return secretManagement.secret;
@@ -290,13 +285,6 @@ export class SecretManager extends EventEmitter {
     return secret?.isRevealed || false;
   }
 
-  registerResolver(resolver: RelayerStatus): void {
-    this.resolvers.set(resolver.address, resolver);
-    this.logger.debug("Resolver registered for secret management", {
-      address: resolver.address,
-    });
-  }
-
   private async conditionallyRevealSecret(orderHash: string): Promise<void> {
     const conditions = this.revealConditions.get(orderHash);
     if (!conditions || !this.areRevealConditionsMet(conditions)) {
@@ -312,29 +300,20 @@ export class SecretManager extends EventEmitter {
       return;
     }
 
-    // Reveal to all authorized resolvers
-    const authorizedResolvers = Array.from(this.resolvers.values()).filter(
-      resolver => resolver.isKyc
-    );
-
-    for (const resolver of authorizedResolvers) {
-      this.emit("secret_disclosed", {
-        orderHash,
-        secret: secretManagement.secret,
-        resolver: resolver.address,
-      });
-    }
+    // Emit secret disclosure event for single resolver operation
+    this.emit("secret_disclosed", {
+      orderHash,
+      secret: secretManagement.secret,
+      resolver: "single-resolver", // Simplified for single resolver operation
+    });
 
     secretManagement.isRevealed = true;
     secretManagement.revealedAt = Date.now();
 
-    this.logger.info(
-      "Secret conditionally revealed to all authorized resolvers",
-      {
-        orderHash,
-        resolverCount: authorizedResolvers.length,
-      }
-    );
+    this.logger.info("Secret conditionally revealed to single resolver", {
+      orderHash,
+      resolverCount: 1, // Single resolver operation
+    });
   }
 
   private areRevealConditionsMet(conditions: SecretRevealConditions): boolean {
@@ -431,4 +410,3 @@ export class SecretManager extends EventEmitter {
     this.logger.info("Secret manager cleanup completed");
   }
 }
- 

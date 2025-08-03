@@ -4,7 +4,6 @@ import {
   FusionOrder,
   FusionOrderExtended,
   OrderStatus,
-  ResolverBidRequest,
   SecretRevealRequest,
   RelayerStatus,
   HealthCheckResponse,
@@ -44,9 +43,11 @@ import {
   Contract,
   Signer,
   ethers,
+  Interface,
 } from "ethers";
 import { uint8ArrayToHex, UINT_40_MAX } from "@1inch/byte-utils";
 import { JsonRpcProvider as NearJsonRpcProvider } from "@near-js/providers";
+import { ContractHelper } from "../contracts/ContractHelper";
 
 export interface RelayerServiceConfig {
   chainIds: string[];
@@ -449,17 +450,7 @@ export class RelayerService extends EventEmitter {
       secretHash:
         fusionExtension?.hashLockInfo?.value || orderDetails.secretHash,
       timeout: Date.now() + 3600000, // 1 hour from now
-      auctionStartTime:
-        Number(
-          fusionExtension?.auctionDetails?.startTime || Date.now() / 1000
-        ) * 1000, // Convert from seconds to milliseconds
-      auctionDuration: Math.max(
-        30000,
-        Math.min(
-          300000,
-          Number(fusionExtension?.auctionDetails?.duration || 120) * 1000
-        )
-      ), // Convert seconds to milliseconds and ensure 30s-5min range
+
       initialRateBump: 0, // Hardcoded to 0 - no dutch auction for now
       signature,
       nonce: innerOrder._salt || "",
@@ -669,7 +660,7 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
-      // Verify resolver is registered and authorized
+      // Check resolver authorization for order state update
       const order = this.orderManager.getOrder(orderHash);
       if (!order) {
         throw new Error("Order not found");
@@ -692,24 +683,16 @@ export class RelayerService extends EventEmitter {
       }
 
       // Update database
-      await this.databaseService.updateOrderStatus(
-        orderHash,
-        newState as any,
-        auction
-      );
+      await this.databaseService.updateOrderStatus(orderHash, newState as any);
 
       // Broadcast state change via WebSocket
       if (this.webSocketService) {
-        this.webSocketService.broadcast(
-          "order_state_updated",
-          {
-            orderHash,
-            newState,
-            resolverAddress,
-            timestamp: Date.now(),
-          },
-          orderHash
-        );
+        this.webSocketService.broadcast("order_state_updated", {
+          orderHash,
+          newState,
+          resolverAddress,
+          timestamp: Date.now(),
+        });
       }
 
       this.logger.info("Order state updated", {
@@ -751,8 +734,7 @@ export class RelayerService extends EventEmitter {
         );
       }
 
-      // Verify resolver is registered
-      // TODO: Add resolver verification logic
+      // Skip resolver registration verification - operating with single resolver
 
       // Update order state to claimed
       // TODO: Implement proper order state management in DatabaseService
@@ -1373,49 +1355,46 @@ export class RelayerService extends EventEmitter {
       let properlyFunded = false;
 
       try {
-        // 1inch Cross-Chain Escrow ABI (from actual contract JSONs)
-        const escrowAbi = [
-          // View functions
+        // Use ethers Interface for cleaner ABI handling
+        const escrowInterface = new Interface([
           "function FACTORY() view returns (address)",
           "function RESCUE_DELAY() view returns (uint256)",
-          "function PROXY_BYTECODE_HASH() view returns (bytes32)",
-
-          // Events for state verification (from actual contract ABIs)
           "event Withdrawal(bytes32 secret)",
           "event EscrowCancelled()",
           "event FundsRescued(address token, uint256 amount)",
+        ]);
 
-          // Functions (for reference, we won't call these)
-          "function withdraw(bytes32 secret, tuple(bytes32 orderHash, bytes32 hashlock, uint256 maker, uint256 taker, uint256 token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)",
-          "function publicWithdraw(bytes32 secret, tuple(bytes32 orderHash, bytes32 hashlock, uint256 maker, uint256 taker, uint256 token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)",
-          "function cancel(tuple(bytes32 orderHash, bytes32 hashlock, uint256 maker, uint256 taker, uint256 token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)",
-        ];
-
-        const escrowContract = new Contract(escrowAddress, escrowAbi, provider);
+        const escrowContract = new Contract(
+          escrowAddress,
+          escrowInterface,
+          provider
+        );
 
         // Parameter verification approach for 1inch contracts:
         // Since these contracts use immutable structs and deterministic addresses,
         // the fact that we can reach the contract at the expected address
         // confirms the parameters are correct (orderHash, hashlock, etc.)
 
-        // 1. Verify this is actually a 1inch escrow contract
-        try {
-          const factory = await escrowContract.FACTORY();
-          const rescueDelay = await escrowContract.RESCUE_DELAY();
+        // 1. Verify this is actually a 1inch escrow contract using helper
+        const escrowVerification = await ContractHelper.verifyEscrowContract(
+          escrowAddress,
+          provider
+        );
 
-          // If these calls succeed, it's a valid 1inch escrow contract
+        if (escrowVerification.isValid) {
+          // If verification succeeds, it's a valid 1inch escrow contract
           amountMatches = true; // Implicitly verified by deterministic address
           tokenMatches = true; // Implicitly verified by deterministic address
           secretHashMatches = true; // Implicitly verified by deterministic address
 
           this.logger.debug("1inch escrow contract verified", {
             escrowAddress,
-            factory,
-            rescueDelay: rescueDelay.toString(),
+            factory: escrowVerification.factory,
+            rescueDelay: escrowVerification.rescueDelay,
           });
-        } catch (error) {
+        } else {
           issues.push(
-            `Not a valid 1inch escrow contract: ${(error as Error).message}`
+            `Not a valid 1inch escrow contract: ${escrowVerification.error || "Verification failed"}`
           );
         }
 
@@ -1503,28 +1482,36 @@ export class RelayerService extends EventEmitter {
             // Check ETH balance
             balance = await provider.getBalance(escrowAddress);
           } else {
-            // Check ERC20 token balance
-            const tokenAbi = [
+            // Check ERC20 token balance using standard ERC20 interface
+            const erc20Interface = new Interface([
               "function balanceOf(address owner) view returns (uint256)",
               "function decimals() view returns (uint8)",
               "function symbol() view returns (string)",
-            ];
+            ]);
 
             try {
-              const tokenContract = new Contract(
+              const tokenContract = ContractHelper.createERC20Contract(
                 expected.expectedToken,
-                tokenAbi,
                 provider
               );
               balance = await tokenContract.balanceOf(escrowAddress);
 
-              // Additional token verification
-              const symbol = await tokenContract.symbol();
-              this.logger.debug("ERC20 token details", {
-                escrowAddress,
-                tokenAddress: expected.expectedToken,
-                symbol,
-              });
+              // Get token info using helper for better error handling
+              try {
+                const tokenInfo = await ContractHelper.getTokenInfo(
+                  expected.expectedToken,
+                  provider
+                );
+                this.logger.debug("ERC20 token details", {
+                  escrowAddress,
+                  tokenInfo,
+                });
+              } catch (tokenInfoError) {
+                this.logger.warn("Could not get token info", {
+                  tokenAddress: expected.expectedToken,
+                  error: (tokenInfoError as Error).message,
+                });
+              }
             } catch (tokenError) {
               issues.push(
                 `Failed to verify ERC20 token: ${(tokenError as Error).message}`
@@ -1674,7 +1661,7 @@ export class RelayerService extends EventEmitter {
     return chainMapping[chainId] || "ethereum"; // Default to ethereum
   }
 
-  async submitResolverBid(bid: ResolverBidRequest): Promise<boolean> {
+  async submitResolverBid(bid: any): Promise<boolean> {
     try {
       this.validateInitialized();
 
@@ -1766,27 +1753,6 @@ export class RelayerService extends EventEmitter {
     } catch (error) {
       this.logger.error("Failed to get active orders", {
         error: (error as Error).message,
-      });
-      throw error;
-    }
-  }
-
-  async registerResolver(resolver: RelayerStatus): Promise<void> {
-    try {
-      this.validateInitialized();
-
-      this.orderManager.registerResolver(resolver);
-      this.secretManager.registerResolver(resolver);
-
-      this.logger.info("Resolver registered", {
-        address: resolver.address,
-        reputation: resolver.reputation,
-        isKyc: resolver.isKyc,
-      });
-    } catch (error) {
-      this.logger.error("Failed to register resolver", {
-        error: (error as Error).message,
-        resolver: resolver.address,
       });
       throw error;
     }

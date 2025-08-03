@@ -6,7 +6,6 @@ import * as path from "path";
 import { RelayerService } from "../services/relayer";
 import {
   ApiResponse,
-  ResolverBidRequest,
   SecretRevealRequest,
   RelayerStatus,
   SDKCrossChainOrder,
@@ -42,84 +41,6 @@ const serializeForJson = (obj: any): any => {
   return obj;
 };
 
-// SDK CrossChainOrder validation schema
-const sdkCrossChainOrderSchema = Joi.object({
-  inner: Joi.object({
-    settlementExtensionContract: Joi.object({
-      val: Joi.string().required(),
-    }).required(),
-    inner: Joi.object({
-      extension: Joi.any(),
-      makerAsset: Joi.object({ val: Joi.string().required() }).required(),
-      takerAsset: Joi.object({ val: Joi.string().required() }).required(),
-      makingAmount: Joi.alternatives()
-        .try(Joi.string(), Joi.number())
-        .required(),
-      takingAmount: Joi.alternatives()
-        .try(Joi.string(), Joi.number())
-        .required(),
-      _salt: Joi.alternatives().try(Joi.string(), Joi.number()).required(),
-      maker: Joi.object({ val: Joi.string().required() }).required(),
-      receiver: Joi.object({ val: Joi.string().required() }).required(),
-      makerTraits: Joi.any(),
-    }).required(),
-    fusionExtension: Joi.object({
-      address: Joi.object({ val: Joi.string().required() }),
-      auctionDetails: Joi.object({
-        initialRateBump: Joi.number().required(),
-        points: Joi.array().default([]),
-        duration: Joi.alternatives().try(Joi.string(), Joi.number()).required(),
-        startTime: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-      }).required(),
-      postInteractionData: Joi.any(),
-      makerPermit: Joi.any().optional(),
-      builder: Joi.any(),
-      hashLockInfo: Joi.any().required(),
-      dstChainId: Joi.number().required(),
-      dstToken: Joi.object({ val: Joi.string().required() }).required(),
-      srcSafetyDeposit: Joi.alternatives()
-        .try(Joi.string(), Joi.number())
-        .required(),
-      dstSafetyDeposit: Joi.alternatives()
-        .try(Joi.string(), Joi.number())
-        .required(),
-      timeLocks: Joi.object({
-        srcWithdrawal: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-        srcPublicWithdrawal: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-        srcCancellation: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-        srcPublicCancellation: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-        dstWithdrawal: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-        dstPublicWithdrawal: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-        dstCancellation: Joi.alternatives()
-          .try(Joi.string(), Joi.number())
-          .required(),
-      }).required(),
-    }).required(),
-    escrowExtension: Joi.object().optional(), // Same as fusionExtension, marked optional
-  }).required(),
-});
-
-const resolverBidSchema = Joi.object({
-  orderHash: Joi.string().hex().length(64).required(),
-  resolver: Joi.string().required(),
-  estimatedGas: Joi.number().integer().min(0).required(),
-  signature: Joi.string().required(),
-});
-
 const secretRevealSchema = Joi.object({
   secret: Joi.string().required(),
   proof: Joi.string().required(),
@@ -141,11 +62,6 @@ const submitSignedOrderSchema = Joi.object({
   signature: Joi.string().required(),
 });
 
-const updateOrderStateSchema = Joi.object({
-  newState: Joi.string().required(),
-  resolverAddress: Joi.string().required(),
-});
-
 const claimOrderSchema = Joi.object({
   resolverAddress: Joi.string().required(),
   estimatedGas: Joi.number().integer().min(0).required(),
@@ -159,14 +75,6 @@ const escrowDeploymentSchema = Joi.object({
   blockNumber: Joi.number().integer().min(0).required(),
   resolverAddress: Joi.string().required(),
   signature: Joi.string().required(),
-});
-
-const resolverRegistrationSchema = Joi.object({
-  address: Joi.string().required(),
-  isKyc: Joi.boolean().required(),
-  reputation: Joi.number().min(0).max(100).required(),
-  completedOrders: Joi.number().integer().min(0).required(),
-  lastActivity: Joi.number().integer().required(),
 });
 
 export function createRelayerRoutes(
@@ -230,21 +138,15 @@ export function createRelayerRoutes(
 
         // Available endpoints
         endpoints: [
-          "GET /health",
           "GET /openapi",
           "POST /orders/prepare",
           "POST /orders/submit",
           "GET /orders",
           "GET /orders/{hash}/status",
-          "POST /resolvers",
-          "POST /bids",
-          "POST /orders/{hash}/state",
           "POST /orders/{hash}/claim",
           "POST /orders/{hash}/escrow-deployed",
           "GET /orders/{hash}/verify-escrows",
           "POST /orders/{hash}/reveal-secret",
-          "GET /stats",
-          "GET /auctions/{orderHash}",
           "GET /ws-info",
         ],
 
@@ -256,18 +158,6 @@ export function createRelayerRoutes(
       };
 
       return res.json(createResponse(true, apiOverview));
-    })
-  );
-
-  // Health check endpoint
-  router.get(
-    "/health",
-    asyncHandler(async (req: Request, res: Response) => {
-      const health = await relayerService.getHealthStatus();
-      const statusCode = health.status === "healthy" ? 200 : 503;
-      res
-        .status(statusCode)
-        .json(createResponse(health.status === "healthy", health));
     })
   );
 
@@ -306,7 +196,6 @@ export function createRelayerRoutes(
       const generateOrderRequest: GenerateOrderRequest = req.body;
 
       try {
-        // Create unsigned Fusion+ order internally
         const result =
           await relayerService.createFusionOrder(generateOrderRequest);
 
@@ -336,7 +225,7 @@ export function createRelayerRoutes(
     })
   );
 
-  // Submit signed order (Step 6)
+  // Submit signed order
   router.post(
     "/orders/submit",
     validateBody(submitSignedOrderSchema),
@@ -371,7 +260,6 @@ export function createRelayerRoutes(
     })
   );
 
-  // Get order status
   router.get(
     "/orders/:hash/status",
     asyncHandler(async (req: Request, res: Response) => {
@@ -406,7 +294,6 @@ export function createRelayerRoutes(
     })
   );
 
-  // Get all active orders
   router.get(
     "/orders",
     asyncHandler(async (req: Request, res: Response) => {
@@ -424,36 +311,7 @@ export function createRelayerRoutes(
     })
   );
 
-  // Submit resolver bid
-  router.post(
-    "/bids",
-    validateBody(resolverBidSchema),
-    asyncHandler(async (req: Request, res: Response) => {
-      const bid: ResolverBidRequest = req.body;
-
-      try {
-        const bidAccepted = await relayerService.submitResolverBid(bid);
-
-        logger.info("Resolver bid submitted via API", {
-          orderHash: bid.orderHash,
-          resolver: bid.resolver,
-          accepted: bidAccepted,
-        });
-
-        res.json(createResponse(true, { accepted: bidAccepted }));
-      } catch (error) {
-        logger.error("API: Failed to submit resolver bid", {
-          error: (error as Error).message,
-          bid,
-        });
-        res
-          .status(400)
-          .json(createResponse(false, undefined, (error as Error).message));
-      }
-    })
-  );
-
-  // Verify escrows are safe for secret revelation (Pre-Step 11)
+  // Verify escrows safety
   router.get(
     "/orders/:hash/verify-escrows",
     asyncHandler(async (req: Request, res: Response) => {
@@ -509,7 +367,7 @@ export function createRelayerRoutes(
     })
   );
 
-  // Request secret reveal (Step 11)
+  // Request secret reveal
   router.post(
     "/orders/:hash/reveal-secret",
     validateBody(secretRevealSchema),
@@ -551,82 +409,7 @@ export function createRelayerRoutes(
     })
   );
 
-  // Register resolver
-  router.post(
-    "/resolvers",
-    validateBody(resolverRegistrationSchema),
-    asyncHandler(async (req: Request, res: Response) => {
-      const resolver: RelayerStatus = req.body;
-
-      try {
-        await relayerService.registerResolver(resolver);
-
-        logger.info("Resolver registered via API", {
-          address: resolver.address,
-          reputation: resolver.reputation,
-        });
-
-        res.status(201).json(
-          createResponse(true, {
-            message: "Resolver registered successfully",
-          })
-        );
-      } catch (error) {
-        logger.error("API: Failed to register resolver", {
-          error: (error as Error).message,
-          resolver: resolver.address,
-        });
-        res
-          .status(400)
-          .json(createResponse(false, undefined, (error as Error).message));
-      }
-    })
-  );
-
-  // Update order state (Step 9 - for resolvers)
-  router.post(
-    "/orders/:hash/state",
-    validateBody(updateOrderStateSchema),
-    asyncHandler(async (req: Request, res: Response) => {
-      const { hash } = req.params;
-      const { newState, resolverAddress } = req.body;
-
-      // Validate order hash format
-      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
-        return res
-          .status(400)
-          .json(createResponse(false, undefined, "Invalid order hash format"));
-      }
-
-      try {
-        const updated = await relayerService.updateOrderState(
-          hash,
-          newState,
-          resolverAddress
-        );
-
-        logger.info("Order state updated via API", {
-          orderHash: hash,
-          newState,
-          resolverAddress,
-        });
-
-        return res.json(createResponse(true, { updated, orderHash: hash }));
-      } catch (error) {
-        logger.error("API: Failed to update order state", {
-          error: (error as Error).message,
-          orderHash: hash,
-          newState,
-          resolverAddress,
-        });
-        return res
-          .status(400)
-          .json(createResponse(false, undefined, (error as Error).message));
-      }
-    })
-  );
-
-  // Claim order for resolver processing (Step 7)
+  // Claim order
   router.post(
     "/orders/:hash/claim",
     validateBody(claimOrderSchema),
@@ -678,7 +461,7 @@ export function createRelayerRoutes(
     })
   );
 
-  // Confirm escrow deployment (Step 7.1 & 9.1)
+  // Confirm escrow deployment
   router.post(
     "/orders/:hash/escrow-deployed",
     validateBody(escrowDeploymentSchema),
@@ -742,71 +525,6 @@ export function createRelayerRoutes(
     })
   );
 
-  // Get auction information
-  router.get(
-    "/auctions/:orderHash",
-    asyncHandler(async (req: Request, res: Response) => {
-      const { orderHash } = req.params;
-
-      if (!orderHash || !/^[a-fA-F0-9]{64}$/.test(orderHash)) {
-        return res
-          .status(400)
-          .json(createResponse(false, undefined, "Invalid order hash format"));
-      }
-
-      try {
-        const orderStatus = await relayerService.getOrderStatus(orderHash);
-
-        if (!orderStatus || !orderStatus.auction) {
-          return res
-            .status(404)
-            .json(createResponse(false, undefined, "Auction not found"));
-        }
-
-        return res.json(
-          createResponse(true, serializeForJson(orderStatus.auction))
-        );
-      } catch (error) {
-        logger.error("API: Failed to get auction info", {
-          error: (error as Error).message,
-          orderHash,
-        });
-        return res
-          .status(500)
-          .json(createResponse(false, undefined, "Internal server error"));
-      }
-    })
-  );
-
-  // Get system statistics
-  router.get(
-    "/stats",
-    asyncHandler(async (req: Request, res: Response) => {
-      try {
-        const health = await relayerService.getHealthStatus();
-        const activeOrders = await relayerService.getActiveOrders();
-
-        const stats = {
-          activeOrders: activeOrders.length,
-          completedOrders: health.completedOrders,
-          errorRate: health.errorRate,
-          uptime: Date.now() - health.timestamp,
-          chainStatus: health.chains,
-          version: health.version,
-        };
-
-        res.json(createResponse(true, stats));
-      } catch (error) {
-        logger.error("API: Failed to get stats", {
-          error: (error as Error).message,
-        });
-        res
-          .status(500)
-          .json(createResponse(false, undefined, "Internal server error"));
-      }
-    })
-  );
-
   // WebSocket endpoint info (enhanced)
   router.get("/ws-info", (req: Request, res: Response) => {
     res.json(
@@ -820,9 +538,6 @@ export function createRelayerRoutes(
         supportedEvents: [
           "order_created",
           "order_updates",
-          "auction_started",
-          "auction_progress",
-          "auction_won",
           "secret_revealed",
           "order_completed",
           "order_cancelled",

@@ -6,7 +6,6 @@ export interface ChainConfig {
   blockTime: number; // Average block time in seconds
   finalityBlocks: number; // Blocks to wait for finality
   gasLimit: {
-    htlcCreation: number;
     withdrawal: number;
     cancellation: number;
   };
@@ -25,24 +24,11 @@ export interface FusionOrder {
   destinationAmount: string;
   secretHash: string;
   timeout: number;
-  auctionStartTime: number;
-  auctionDuration: number;
+
   initialRateBump: number; // Basis points
   signature: string;
   nonce: string;
   createdAt: number;
-}
-
-export interface DutchAuctionState {
-  orderHash: string;
-  startTime: number;
-  duration: number;
-  initialRateBump: number;
-  currentRate: number;
-  isActive: boolean;
-  winner?: string;
-  finalRate?: number;
-  participatingResolvers: string[];
 }
 
 export interface EscrowDetails {
@@ -121,7 +107,7 @@ export interface OrderStatus {
   phase: TimelockPhase["phase"];
   sourceEscrow?: EscrowDetails;
   destinationEscrow?: EscrowDetails;
-  auction?: DutchAuctionState;
+
   secret?: SecretManagement;
   timelock?: TimelockPhase;
   isCompleted: boolean;
@@ -132,7 +118,6 @@ export interface OrderStatus {
 export interface OrderEvent {
   type:
     | "order_created"
-    | "auction_started"
     | "escrow_created"
     | "secret_revealed"
     | "withdrawal_completed"
@@ -150,20 +135,20 @@ export interface ChainAdapter {
   createEscrow(order: FusionOrder, resolver: string): Promise<string>;
   verifyEscrow(
     orderHash: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<EscrowDetails>;
   withdrawFromEscrow(
     orderHash: string,
     secret: string,
-    htlcContractAddress: string
+    escrowAddress: string
   ): Promise<string>;
-  cancelEscrow(orderHash: string, htlcContractAddress: string): Promise<string>;
+  cancelEscrow(orderHash: string, escrowAddress: string): Promise<string>;
   getBlockNumber(): Promise<number>;
   getTransaction(hash: string): Promise<any>;
   estimateGas(
     operation: string,
     params: any,
-    htlcContractAddress?: string
+    escrowAddress?: string
   ): Promise<number>;
 }
 
@@ -228,13 +213,6 @@ export interface EscrowDeploymentConfirmation {
   signature: string;
 }
 
-export interface ResolverBidRequest {
-  orderHash: string;
-  resolver: string;
-  estimatedGas: number;
-  signature: string;
-}
-
 export interface SecretRevealRequest {
   orderHash: string;
   secret: string;
@@ -287,16 +265,8 @@ export interface SDKHashLock {
   secrets?: string[];
 }
 
-export interface SDKAuctionDetails {
-  initialRateBump: number;
-  points: any[];
-  duration: bigint;
-  startTime: bigint;
-}
-
 export interface SDKEscrowExtension {
   address: SDKAddress;
-  auctionDetails: SDKAuctionDetails;
   postInteractionData: any;
   makerPermit?: string;
   builder: any;
@@ -357,11 +327,6 @@ export interface FusionOrderExtended extends FusionOrder {
     dstWithdrawal: number; // B1: Finality lock (destination)
     dstPublicWithdrawal: number; // B2→B3: Resolver → Public (destination)
     dstCancellation: number; // B4: Resolver cancellation (destination)
-  };
-
-  // Enhanced auction details from SDK
-  enhancedAuctionDetails?: {
-    points: any[]; // Price curve points
   };
 
   // Order state management

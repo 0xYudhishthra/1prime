@@ -34,9 +34,7 @@ export class SDKOrderMapper {
       destinationAmount: limitOrder.takingAmount.toString(),
       secretHash: this.extractSecretHash(fusionExtension.hashLockInfo),
       timeout: this.calculateTimeout(fusionExtension.timeLocks),
-      auctionStartTime: Number(fusionExtension.auctionDetails.startTime),
-      auctionDuration: Number(fusionExtension.auctionDetails.duration),
-      initialRateBump: fusionExtension.auctionDetails.initialRateBump,
+      initialRateBump: 0, // Simplified without auction
       signature,
       nonce: limitOrder._salt.toString(),
       createdAt: Date.now(),
@@ -59,9 +57,7 @@ export class SDKOrderMapper {
       merkleSecretTree: merkleTree,
 
       detailedTimeLocks: this.mapTimeLocks(fusionExtension.timeLocks),
-      enhancedAuctionDetails: {
-        points: fusionExtension.auctionDetails.points,
-      },
+      // enhancedAuctionDetails removed - no auctions
     };
 
     return {
