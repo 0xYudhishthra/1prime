@@ -30,6 +30,7 @@ import {
   isTokenSupportedOnChain,
   TOKEN_CONFIGS,
 } from "../config/tokens";
+import { getRandomValues } from "crypto";
 
 // Helper function to determine if a chain is EVM-based
 function isEvmChain(chainId: string): boolean {
@@ -170,7 +171,7 @@ export class RelayerService extends EventEmitter {
   private generateEvmPlaceholder(): string {
     // Generate 20 random bytes and convert to hex
     const randomBytes = new Uint8Array(20);
-    crypto.getRandomValues(randomBytes);
+    getRandomValues(randomBytes);
     return (
       "0x" +
       Array.from(randomBytes)
