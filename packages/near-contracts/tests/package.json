@@ -25,8 +25,10 @@
   "engines": {
     "node": ">=16.0.0"
   },
-  "devDependencies": {},
-  "dependencies": {},
+  "dependencies": {
+    "@near-js/types": "^2.2.4",
+    "near-api-js": "^6.2.4"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/your-org/unite-defi.git"

@@ -102,34 +102,35 @@ async function main() {
   const safetyDeposit = "100000000000000000000"; // 0.1 NEAR (smaller test amount)
 
   // Prepare order according to the ABI - FIELD ORDER MATTERS!
-  const order = {
-    maker: config.accounts.maker, // 1st
-    taker: config.accounts.resolver, // 2nd
-    making_amount: makingAmount, // 3rd
-    taking_amount: takingAmount, // 4th
-    maker_asset: "near", // 5th - Native NEAR token
-    taker_asset: "USDC", // 6th - ETH asset identifier
-    salt: orderSalt, // 7th
-    extension: {
-      // 8th - OrderExtension field order
-      hashlock: hashlock, // 1st
-      src_chain_id: "397", // 2nd - NEAR (u64 as string)
-      dst_chain_id: "1", // 3rd - Ethereum (u64 as string)
-      src_safety_deposit: safetyDeposit, // 4th - 0.1 NEAR
-      dst_safety_deposit: safetyDeposit, // 5th - 0.1 NEAR equivalent on ETH
-      timelocks: {
-        // 6th - Timelocks field order
-        deployed_at: currentTime.toString(), // 1st - u64 as string
-        src_withdrawal: 300, // 2nd - u32 as number
-        src_public_withdrawal: 600, // 3rd - u32 as number
-        src_cancellation: 900, // 4th - u32 as number
-        src_public_cancellation: 1200, // 5th - u32 as number
-        dst_withdrawal: 180, // 6th - u32 as number
-        dst_public_withdrawal: 360, // 7th - u32 as number
-        dst_cancellation: 720, // 8th - u32 as number
-      },
-    },
-  };
+  // Force exact field order by creating objects with precise property order
+  const timelocks = {};
+  timelocks.deployed_at = currentTime.toString(); // 1st - u64 as string
+  timelocks.src_withdrawal = 300; // 2nd - u32 as number
+  timelocks.src_public_withdrawal = 600; // 3rd - u32 as number
+  timelocks.src_cancellation = 900; // 4th - u32 as number
+  timelocks.src_public_cancellation = 1200; // 5th - u32 as number
+  timelocks.dst_withdrawal = 180; // 6th - u32 as number
+  timelocks.dst_public_withdrawal = 360; // 7th - u32 as number
+  timelocks.dst_cancellation = 720; // 8th - u32 as number
+
+  const extension = {};
+  extension.hashlock = hashlock; // 1st
+  extension.src_chain_id = "397"; // 2nd - NEAR (u64 as string)
+  extension.dst_chain_id = "1"; // 3rd - Ethereum (u64 as string)
+  extension.src_safety_deposit = safetyDeposit; // 4th - 0.1 NEAR
+  extension.dst_safety_deposit = safetyDeposit; // 5th - 0.1 NEAR equivalent on ETH
+  extension.timelocks = timelocks; // 6th - Timelocks
+
+  const order = {};
+  order.extension = extension; // 1st - OrderExtension (per ABI)
+  order.maker = config.accounts.maker; // 2nd
+  order.maker_asset = "wrap.testnet"; // 3rd - Wrapped NEAR account on testnet
+  order.making_amount = makingAmount; // 4th
+  order.salt = orderSalt; // 5th
+  order.taker = config.accounts.resolver; // 6th
+  order.taker_asset =
+    "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"; // 7th - Valid NEAR implicit account ID
+  order.taking_amount = takingAmount; // 8th
 
   const orderSignature = "mock_signature_" + orderSalt.slice(0, 16);
 
@@ -145,8 +146,25 @@ async function main() {
   // Debug: Log the JSON being sent
   log(`📋 Deploy args: ${JSON.stringify(deployArgs, null, 2)}`, "blue");
 
+  // Debug: Check what's at column 352
+  const jsonString = JSON.stringify(deployArgs);
+  log(`📏 JSON length: ${jsonString.length}`, "blue");
+  if (jsonString.length >= 352) {
+    log(
+      `🔍 Character at column 352: "${jsonString.charAt(351)}" (${jsonString.charCodeAt(351)})`,
+      "blue"
+    );
+    log(
+      `🔍 Substring around column 352: "${jsonString.substring(346, 358)}"`,
+      "blue"
+    );
+  }
+
+  // Convert to base64 to avoid JSON parsing issues
+  const argsBase64 = Buffer.from(JSON.stringify(deployArgs)).toString("base64");
+
   const createSrcResult = await runNearCommand(
-    `near call ${config.accounts.resolver} deploy_src '${JSON.stringify(
+    `near call ${config.accounts.resolver}  deploy_src '${JSON.stringify(
       deployArgs
     )}' --accountId ${
       config.accounts.owner
@@ -213,7 +231,7 @@ async function main() {
   log("🎉 NEAR → ETH swap simulation completed!", "green");
   log("\n📋 Swap Details:", "blue");
   log(`   • Order Salt: ${orderSalt}`, "blue");
-  log(`   • Amount: 1 NEAR → 1 USDC`, "blue");
+  log(`   • Amount: 1 NEAR → 1 Token`, "blue");
   log(`   • Secret: ${secret}`, "blue");
   log(`   • Hashlock: ${hashlock}`, "blue");
   log(`   • Maker: ${config.accounts.maker}`, "blue");
