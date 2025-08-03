@@ -46,9 +46,59 @@ export class DatabaseService {
   // Order management methods
   async createOrder(order: FusionOrder): Promise<OrderRecord> {
     try {
-      const orderRecord: OrderRecord = {
-        ...order,
-        status: "pending" as unknown as OrderStatus,
+      // Debug logging to see what we're working with
+      this.logger.debug("Creating order with data", {
+        orderHash: order.orderHash,
+        hasOrderHash: !!order.orderHash,
+        orderKeys: Object.keys(order),
+        orderType: typeof order,
+      });
+
+      // Custom replacer to handle BigInt and complex objects
+      const bigIntReplacer = (key: string, value: any) => {
+        if (typeof value === "bigint") {
+          return value.toString();
+        }
+        return value;
+      };
+
+      // Ensure orderHash is present
+      if (!order.orderHash) {
+        throw new Error("Order hash is required but missing from order object");
+      }
+
+      // Create a record that matches the existing database schema with exact column names
+      const orderRecord = {
+        // Use exact column names from schema (quoted in SQL, camelCase in JS)
+        orderHash: order.orderHash,
+        maker: order.maker || "",
+        sourceChain: order.sourceChain || "",
+        destinationChain: order.destinationChain || "",
+        sourceToken: order.sourceToken || "",
+        destinationToken: order.destinationToken || "",
+        sourceAmount: order.sourceAmount || "0",
+        destinationAmount: order.destinationAmount || "0",
+        secretHash: order.secretHash || "",
+        timeout: order.timeout || Date.now() + 3600000,
+        auctionStartTime: order.auctionStartTime || Date.now(),
+        auctionDuration: order.auctionDuration || 120000,
+        initialRateBump: order.initialRateBump || 1000,
+        signature: order.signature || "",
+        nonce: order.nonce || "",
+        sourceChainHtlcAddress: order.sourceChainHtlcAddress || null,
+        destinationChainHtlcAddress: order.destinationChainHtlcAddress || null,
+
+        // SDK-extracted fields (match the schema)
+        receiver: (order as any).receiver || null,
+        srcSafetyDeposit: (order as any).srcSafetyDeposit || null,
+        dstSafetyDeposit: (order as any).dstSafetyDeposit || null,
+
+        // Store complex objects in appropriate JSONB columns
+        detailedTimeLocks: (order as any).detailedTimeLocks || null,
+        enhancedAuctionDetails: (order as any).enhancedAuctionDetails || null,
+
+        // Standard tracking fields
+        status: "pending",
         createdAt: Date.now(),
         updatedAt: Date.now(),
         events: [
@@ -59,6 +109,13 @@ export class DatabaseService {
           },
         ],
       };
+
+      // Debug the record being inserted
+      this.logger.debug("Inserting order record", {
+        orderHash: orderRecord.orderHash,
+        recordKeys: Object.keys(orderRecord),
+        hasOrderHashInRecord: !!orderRecord.orderHash,
+      });
 
       const { data, error } = await this.supabase
         .from("orders")
@@ -76,7 +133,20 @@ export class DatabaseService {
         destinationChain: order.destinationChain,
       });
 
-      return data;
+      // Return the data in the expected format
+      return {
+        ...order,
+        status: "pending" as unknown as OrderStatus,
+        createdAt: orderRecord.createdAt,
+        updatedAt: orderRecord.updatedAt,
+        events: [
+          {
+            type: "order_created",
+            timestamp: Date.now(),
+            data: { orderHash: order.orderHash },
+          },
+        ],
+      };
     } catch (error) {
       this.logger.error("Failed to create order", {
         orderHash: order.orderHash,
@@ -99,7 +169,12 @@ export class DatabaseService {
         throw new Error(`Failed to get order: ${error.message}`);
       }
 
-      return data || null;
+      if (!data) {
+        return null;
+      }
+
+      // Return the data directly since JSONB columns are automatically parsed by Supabase
+      return data;
     } catch (error) {
       this.logger.error("Failed to get order", {
         orderHash,
@@ -163,7 +238,9 @@ export class DatabaseService {
         );
       }
 
-      const updatedEvents = [...(currentOrder.events || []), event];
+      // Supabase automatically handles JSONB arrays
+      const currentEvents = currentOrder.events || [];
+      const updatedEvents = [...currentEvents, event];
 
       const { error } = await this.supabase
         .from("orders")
@@ -203,6 +280,7 @@ export class DatabaseService {
         throw new Error(`Failed to get orders by status: ${error.message}`);
       }
 
+      // Return data directly since Supabase handles JSONB automatically
       return data || [];
     } catch (error) {
       this.logger.error("Failed to get orders by status", {
@@ -225,6 +303,7 @@ export class DatabaseService {
         throw new Error(`Failed to get active orders: ${error.message}`);
       }
 
+      // Return data directly since Supabase handles JSONB automatically
       return data || [];
     } catch (error) {
       this.logger.error("Failed to get active orders", {
@@ -330,5 +409,99 @@ export class DatabaseService {
       };
     }
   }
+
+  // Store prepared order with full details
+  async storePreparedOrder(
+    orderHash: string,
+    fusionOrder: any,
+    orderDetails: any
+  ): Promise<void> {
+    try {
+      // Custom replacer to handle BigInt serialization
+      const bigIntReplacer = (key: string, value: any) => {
+        if (typeof value === "bigint") {
+          return value.toString();
+        }
+        return value;
+      };
+
+      const preparedOrderRecord = {
+        orderHash,
+        fusionOrder: JSON.stringify(fusionOrder, bigIntReplacer), // Store the full SDK order
+        orderDetails: JSON.stringify(orderDetails, bigIntReplacer), // Store order preparation details
+        status: "prepared",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const { error } = await this.supabase
+        .from("prepared_orders")
+        .insert([preparedOrderRecord]);
+
+      if (error) {
+        throw new Error(`Failed to store prepared order: ${error.message}`);
+      }
+
+      this.logger.info("Prepared order stored in database", {
+        orderHash,
+      });
+    } catch (error) {
+      this.logger.error("Failed to store prepared order", {
+        orderHash,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  // Store signed order (alternative to createOrder for complex objects)
+  async storeSignedOrder(order: FusionOrder): Promise<void> {
+    try {
+      // Use the existing createOrder method
+      await this.createOrder(order);
+
+      this.logger.info("Signed order stored successfully", {
+        orderHash: order.orderHash,
+        maker: order.maker,
+      });
+    } catch (error) {
+      this.logger.error("Failed to store signed order", {
+        orderHash: order.orderHash,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  // Retrieve prepared order by hash
+  async getPreparedOrder(
+    orderHash: string
+  ): Promise<{ fusionOrder: any; orderDetails: any } | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("prepared_orders")
+        .select("*")
+        .eq("orderHash", orderHash)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        throw new Error(`Failed to get prepared order: ${error.message}`);
+      }
+
+      if (!data) {
+        return null;
+      }
+
+      return {
+        fusionOrder: JSON.parse(data.fusionOrder),
+        orderDetails: JSON.parse(data.orderDetails),
+      };
+    } catch (error) {
+      this.logger.error("Failed to get prepared order", {
+        orderHash,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
 }
- 

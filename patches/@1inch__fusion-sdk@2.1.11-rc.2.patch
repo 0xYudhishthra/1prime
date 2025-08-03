@@ -1,0 +1,44 @@
+diff --git a/dist/cjs/constants.js b/dist/cjs/constants.js
+index 198896c3ad3a9a79eef996e1120eef8761055f56..f6699d5777398851d82e0c4f6d256131c37d6565 100644
+--- a/dist/cjs/constants.js
++++ b/dist/cjs/constants.js
+@@ -17,6 +17,9 @@ var NetworkEnum;
+     NetworkEnum[NetworkEnum["LINEA"] = 59144] = "LINEA";
+     NetworkEnum[NetworkEnum["SONIC"] = 146] = "SONIC";
+     NetworkEnum[NetworkEnum["UNICHAIN"] = 130] = "UNICHAIN";
++    NetworkEnum[NetworkEnum["NEAR"] = 397] = "NEAR";
++    NetworkEnum[NetworkEnum["NEAR_TESTNET"] = 398] = "NEAR_TESTNET";
++    NetworkEnum[NetworkEnum["ETH_SEPOLIA"] = 11155111] = "ETH_SEPOLIA";
+ })(NetworkEnum = exports.NetworkEnum || (exports.NetworkEnum = {}));
+ exports.ONE_INCH_LIMIT_ORDER_V4 = '0x111111125421ca6dc452d289314280a0f8842a65';
+ exports.UINT_160_MAX = (1n << 160n) - 1n;
+diff --git a/dist/esm/constants.js b/dist/esm/constants.js
+index ca6c4da563ed8d50720646bd4309e08e26580277..88a619eecdad3eeb427cda29edc8c5567201558a 100644
+--- a/dist/esm/constants.js
++++ b/dist/esm/constants.js
+@@ -14,6 +14,9 @@ export var NetworkEnum;
+     NetworkEnum[NetworkEnum["LINEA"] = 59144] = "LINEA";
+     NetworkEnum[NetworkEnum["SONIC"] = 146] = "SONIC";
+     NetworkEnum[NetworkEnum["UNICHAIN"] = 130] = "UNICHAIN";
++    NetworkEnum[NetworkEnum["NEAR"] = 397] = "NEAR";
++    NetworkEnum[NetworkEnum["NEAR_TESTNET"] = 398] = "NEAR_TESTNET";
++    NetworkEnum[NetworkEnum["ETH_SEPOLIA"] = 11155111] = "ETH_SEPOLIA";
+ })(NetworkEnum || (NetworkEnum = {}));
+ export const ONE_INCH_LIMIT_ORDER_V4 = '0x111111125421ca6dc452d289314280a0f8842a65';
+ export const UINT_160_MAX = (1n << 160n) - 1n;
+diff --git a/dist/types/src/constants.d.ts b/dist/types/src/constants.d.ts
+index edfe59d8b592d024afab4565030c808f6551ffc3..d01198096a040d5effeb1f0c4a42b9ef145061e4 100644
+--- a/dist/types/src/constants.d.ts
++++ b/dist/types/src/constants.d.ts
+@@ -12,7 +12,10 @@ export declare enum NetworkEnum {
+     COINBASE = 8453,
+     LINEA = 59144,
+     SONIC = 146,
+-    UNICHAIN = 130
++    UNICHAIN = 130,
++    NEAR = 397,
++    NEAR_TESTNET = 398,
++    ETH_SEPOLIA = 11155111
+ }
+ export declare const ONE_INCH_LIMIT_ORDER_V4 = "0x111111125421ca6dc452d289314280a0f8842a65";
+ export declare const UINT_160_MAX: bigint;

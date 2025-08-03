@@ -7,19 +7,21 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "dev": "nodemon --exec ts-node src/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
+    "@1inch/byte-utils": "3.1.0",
+    "@1inch/cross-chain-sdk": "workspace:*",
     "@near-js/providers": "2",
     "@supabase/supabase-js": "^2.38.5",
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "ethers": "^6.8.1",
+    "ethers": "^6.13.1",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
     "joi": "^17.11.0",

@@ -17,6 +17,31 @@ import {
 } from "../types";
 import { SDKOrderMapper } from "../utils/sdk-mapper";
 
+// Helper function to serialize BigInt values to strings for JSON
+const serializeForJson = (obj: any): any => {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj === "bigint") {
+    return obj.toString();
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(serializeForJson);
+  }
+
+  if (typeof obj === "object") {
+    const serialized: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      serialized[key] = serializeForJson(value);
+    }
+    return serialized;
+  }
+
+  return obj;
+};
+
 // SDK CrossChainOrder validation schema
 const sdkCrossChainOrderSchema = Joi.object({
   inner: Joi.object({
@@ -112,8 +137,7 @@ const generateOrderSchema = Joi.object({
 });
 
 const submitSignedOrderSchema = Joi.object({
-  orderHash: Joi.string().hex().length(64).required(),
-  signedOrder: Joi.object().required(), // SDK CrossChainOrder - flexible validation
+  orderHash: Joi.string().required(),
   signature: Joi.string().required(),
 });
 
@@ -283,11 +307,11 @@ export function createRelayerRoutes(
 
       try {
         // Create unsigned Fusion+ order internally
-        const { orderHash, fusionOrder } =
+        const result =
           await relayerService.createFusionOrder(generateOrderRequest);
 
         logger.info("Order details generated via API", {
-          orderHash,
+          orderHash: result.orderHash,
           userAddress: generateOrderRequest.userAddress,
           fromChain: generateOrderRequest.fromChain,
           toChain: generateOrderRequest.toChain,
@@ -295,16 +319,9 @@ export function createRelayerRoutes(
 
         return res.status(200).json(
           createResponse(true, {
-            orderHash,
-            fusionOrder, // Unsigned SDK CrossChainOrder for frontend signing
-            orderDetails: {
-              amount: generateOrderRequest.amount,
-              fromToken: generateOrderRequest.fromToken,
-              toToken: generateOrderRequest.toToken,
-              fromChain: generateOrderRequest.fromChain,
-              toChain: generateOrderRequest.toChain,
-              secretHash: generateOrderRequest.secretHash,
-            },
+            orderHash: result.orderHash,
+            success: result.success,
+            message: result.message,
           })
         );
       } catch (error) {
@@ -327,34 +344,21 @@ export function createRelayerRoutes(
       const submitRequest: SubmitSignedOrderRequest = req.body;
 
       try {
-        // Validate the signed order
-        const isValid = await relayerService.validateSignedOrder(
-          submitRequest.orderHash,
-          submitRequest.signedOrder,
-          submitRequest.signature
-        );
-
-        if (!isValid) {
-          return res
-            .status(400)
-            .json(
-              createResponse(false, undefined, "Invalid signature or order")
-            );
-        }
-
-        // Submit signed order and start relayer processing
+        // Submit signed order - only orderHash + signature needed
+        console.log("submitRequest", submitRequest.orderHash);
+        console.log("submitRequest", submitRequest.signature);
         const orderStatus = await relayerService.submitSignedOrder(
           submitRequest.orderHash,
-          submitRequest.signedOrder,
           submitRequest.signature
         );
 
         logger.info("Signed order submitted via API", {
           orderHash: submitRequest.orderHash,
-          maker: submitRequest.signedOrder.inner.inner.maker.val,
         });
 
-        return res.status(201).json(createResponse(true, orderStatus));
+        return res
+          .status(201)
+          .json(createResponse(true, serializeForJson(orderStatus)));
       } catch (error) {
         logger.error("API: Failed to submit signed order", {
           error: (error as Error).message,
@@ -389,7 +393,7 @@ export function createRelayerRoutes(
             .json(createResponse(false, undefined, "Order not found"));
         }
 
-        return res.json(createResponse(true, orderStatus));
+        return res.json(createResponse(true, serializeForJson(orderStatus)));
       } catch (error) {
         logger.error("API: Failed to get order status", {
           error: (error as Error).message,
@@ -408,7 +412,7 @@ export function createRelayerRoutes(
     asyncHandler(async (req: Request, res: Response) => {
       try {
         const activeOrders = await relayerService.getActiveOrders();
-        res.json(createResponse(true, activeOrders));
+        res.json(createResponse(true, serializeForJson(activeOrders)));
       } catch (error) {
         logger.error("API: Failed to get active orders", {
           error: (error as Error).message,
@@ -759,7 +763,9 @@ export function createRelayerRoutes(
             .json(createResponse(false, undefined, "Auction not found"));
         }
 
-        return res.json(createResponse(true, orderStatus.auction));
+        return res.json(
+          createResponse(true, serializeForJson(orderStatus.auction))
+        );
       } catch (error) {
         logger.error("API: Failed to get auction info", {
           error: (error as Error).message,

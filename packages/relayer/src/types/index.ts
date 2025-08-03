@@ -3,7 +3,6 @@ export interface ChainConfig {
   name: string;
   type: "evm" | "near";
   rpcUrl: string;
-  // No static contract addresses - HTLCs are deployed per swap
   blockTime: number; // Average block time in seconds
   finalityBlocks: number; // Blocks to wait for finality
   gasLimit: {
@@ -11,6 +10,8 @@ export interface ChainConfig {
     withdrawal: number;
     cancellation: number;
   };
+  // Cross-chain escrow factory addresses for 1inch Fusion+
+  escrowFactoryAddress?: string;
 }
 
 export interface FusionOrder {
@@ -210,7 +211,6 @@ export interface GenerateOrderRequest {
 
 export interface SubmitSignedOrderRequest {
   orderHash: string;
-  signedOrder: any; // SDK CrossChainOrder object
   signature: string;
 }
 
