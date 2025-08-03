@@ -61,7 +61,7 @@ pub async fn construct_sample_order() -> Order {
     let order = Order {
         maker: AccountId::from_str("example-maker.testnet").unwrap(),
         taker: AccountId::from_str("example-taker.testnet").unwrap(),
-        making_amount: 1000000000000000000, // 1 NEAR
+        making_amount: NearToken::from_yoctonear(1).as_yoctonear(), // 1 NEAR
         taking_amount: 1000000000000000000, // 1 ETH
         maker_asset: AccountId::from_str("near").unwrap(),
         taker_asset: "0x1234567890abcdef1234567890abcdef12345678".to_string(), // Example ETH address
@@ -70,7 +70,7 @@ pub async fn construct_sample_order() -> Order {
             hashlock: "example-hashlock".to_string(),
             src_chain_id: 11155111, // Sepolia Testnet Chain ID
             dst_chain_id: 1, // Mainnet Chain ID
-            src_safety_deposit: 10000000000000000, // 0.01 NEAR
+            src_safety_deposit: NearToken::from_yoctonear(10000).as_yoctonear(), // 0.01 NEAR
             dst_safety_deposit: 10000000000000000, // 0.01 ETH
             timelocks: Timelocks {
                 deployed_at: 1700000000, // Example timestamp
@@ -369,7 +369,7 @@ pub async fn deploy_near_src_contract(order: Order, order_signature: String, amo
                 }
             )),
             gas: U64(300000000000000), // 30 TGas
-            deposit: U128(0)
+            deposit: U128(order.extension.src_safety_deposit + order.making_amount)
         }
     ));
 
