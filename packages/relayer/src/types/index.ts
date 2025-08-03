@@ -211,7 +211,6 @@ export interface EscrowDeploymentConfirmation {
   transactionHash: string;
   blockNumber: number;
   resolverAddress: string;
-  signature: string;
 }
 
 export interface SecretRevealRequest {

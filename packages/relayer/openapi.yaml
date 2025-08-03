@@ -449,13 +449,11 @@ paths:
             schema:
               $ref: "#/components/schemas/EscrowDeploymentConfirmation"
             example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               escrowType: "src"
               escrowAddress: "0x789abcdef123456789abcdef123456789abcdef12"
               transactionHash: "0xdef456789abcdef123456789abcdef123456789abcdef123456789abcdef123456"
               blockNumber: 18500000
               resolverAddress: "0xabc123456789abcdef123456789abcdef123456789"
-              signature: "0x5a6b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234"
       responses:
         "200":
           description: Escrow deployment confirmed successfully
@@ -503,7 +501,6 @@ paths:
             schema:
               $ref: "#/components/schemas/SecretRevealRequest"
             example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               secret: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
               proof: "0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
               signature: "0x7f6e5d4c3b2a1098765432abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
@@ -598,8 +595,6 @@ components:
       required:
         - userSrcAddress
         - userDstAddress
-        - userSrcAddress
-        - userDstAddress
         - amount
         - fromToken
         - toToken
@@ -662,18 +657,12 @@ components:
     EscrowDeploymentConfirmation:
       type: object
       required:
-        - orderHash
         - escrowType
         - escrowAddress
         - transactionHash
         - blockNumber
         - resolverAddress
-        - signature
       properties:
-        orderHash:
-          type: string
-          pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
-          description: Order hash for which escrow was deployed
         escrowType:
           type: string
           enum: [src, dst]
@@ -691,10 +680,6 @@ components:
           type: string
           pattern: "^0x[a-fA-F0-9]{40}$"
           description: Resolver's address
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Resolver's signature
 
     EscrowVerificationResponse:
       type: object
@@ -740,15 +725,10 @@ components:
     SecretRevealRequest:
       type: object
       required:
-        - orderHash
         - secret
         - proof
         - signature
       properties:
-        orderHash:
-          type: string
-          pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
-          description: Hash of the order
         secret:
           type: string
           description: Secret value for order completion

@@ -78,7 +78,6 @@ const escrowDeploymentSchema = Joi.object({
   transactionHash: Joi.string().required(),
   blockNumber: Joi.number().integer().min(0).required(),
   resolverAddress: Joi.string().required(),
-  signature: Joi.string().required(),
 });
 
 export function createRelayerRoutes(

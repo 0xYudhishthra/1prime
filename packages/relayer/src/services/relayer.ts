@@ -360,6 +360,11 @@ export class RelayerService extends EventEmitter {
 
       //Get the NetworkEnum from the chain id
       const chainIdToNetwork = {
+        "1": NetworkEnum.ETHEREUM,
+        "8453": NetworkEnum.COINBASE, // Base
+        "56": NetworkEnum.BINANCE, // BSC
+        "137": NetworkEnum.POLYGON,
+        "42161": NetworkEnum.ARBITRUM,
         "11155111": NetworkEnum.ETH_SEPOLIA,
         "397": NetworkEnum.NEAR,
         "398": NetworkEnum.NEAR_TESTNET,

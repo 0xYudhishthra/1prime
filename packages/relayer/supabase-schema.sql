@@ -27,9 +27,9 @@ CREATE TABLE orders (
   "signature" TEXT NOT NULL,
   "nonce" TEXT NOT NULL,
   "createdAt" BIGINT NOT NULL,
-  "status" TEXT NOT NULL CHECK (status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created', 'completed', 'cancelled', 'expired')),
+  "status" TEXT NOT NULL CHECK (status IN ('pending', 'auction_active', 'processing', 'completed', 'cancelled', 'expired')),
   "phase" TEXT DEFAULT 'submitted' CHECK (phase IN ('submitted', 'claimed', 'src_escrow_deployed', 'dst_escrow_deployed', 'waiting-for-secret', 'completed', 'cancelled')),
-  "assignedResolver" TEXT, -- Address of the resolver assigned to process this order
+  "assignedResolver" TEXT, -- Address of the resolver processing this order
   "updatedAt" BIGINT NOT NULL,
   "auctionState" JSONB,
   "events" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -56,7 +56,7 @@ CREATE TABLE orders (
   "processedAddresses" JSONB, -- Processed addresses (EVM placeholders): {userAddress, fromToken, toToken, escrowFactory}
   "nearAddressMappings" JSONB, -- EVM placeholder -> original NEAR address mappings
   
-  -- Indexes for efficient querying
+  -- Constraints
   CONSTRAINT valid_chain_pair CHECK (
     "sourceChain" != "destinationChain" AND
     ("sourceChain" IN ('ethereum', 'base', 'bsc', 'polygon', 'arbitrum', 'near', 'near-testnet')) AND
@@ -77,8 +77,6 @@ CREATE TABLE prepared_orders (
   
   -- Note: No foreign key to orders table since prepared_orders are created BEFORE orders
 );
-
-
 
 -- Create indexes for efficient querying
 CREATE INDEX idx_orders_status ON orders("status");
@@ -157,12 +155,13 @@ CREATE TRIGGER update_prepared_orders_updated_at
 
 -- Sample order
 -- INSERT INTO orders (
---   "orderHash", "maker", "sourceChain", "destinationChain", 
+--   "orderHash", "maker", "userSrcAddress", "userDstAddress", "sourceChain", "destinationChain", 
 --   "sourceToken", "destinationToken", "sourceAmount", "destinationAmount",
 --   "secretHash", "timeout", "auctionStartTime", "auctionDuration", 
 --   "initialRateBump", "signature", "nonce", "createdAt", "status", "updatedAt"
 -- ) VALUES (
 --   '0x1234567890abcdef...', '0x1234567890abcdef1234567890abcdef12345678',
+--   '0x1234567890abcdef1234567890abcdef12345678', '0x1234567890abcdef1234567890abcdef12345678',
 --   'ethereum', 'near', '0x0000000000000000000000000000000000000000',
 --   'wrap.near', '1000000000000000000', '5000000000000000000000000',
 --   '0xabcdef1234567890...', EXTRACT(epoch FROM now() + interval '1 hour') * 1000,
@@ -174,7 +173,7 @@ CREATE TRIGGER update_prepared_orders_updated_at
 -- View for active orders (convenience)
 CREATE VIEW active_orders AS
 SELECT * FROM orders 
-WHERE status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created')
+WHERE status IN ('pending', 'auction_active', 'processing')
    OR phase IN ('submitted', 'claimed', 'src_escrow_deployed', 'dst_escrow_deployed', 'waiting-for-secret')
 ORDER BY "createdAt" DESC;
 
