@@ -58,18 +58,12 @@ export class CrossChainSwapService {
         throw new Error('NEAR account ID and keypair required for NEAR source chain');
       }
 
-      // Get the correct user address for the source chain
-      const userAddress = getUserAddressForChain(
-        request.fromChain, 
-        evmAddress, 
-        nearAccountId || ''
-      );
-
       console.log('Chain-aware swap setup:', {
         sourceChain: request.fromChain,
         destinationChain: request.toChain,
         sourceIsNear,
-        userAddress,
+        evmAddress,
+        nearAccountId,
       });
 
       // Step 1 & 2: Generate random number and hash
@@ -89,7 +83,7 @@ export class CrossChainSwapService {
       // Step 3-6: Prepare and submit order
       const orderStatus = await this.prepareAndSubmitOrder(
         orderRecord,
-        userAddress,
+        evmAddress,
         request.fromChain,
         evmPrivateKey,
         nearKeypair,
@@ -169,7 +163,7 @@ export class CrossChainSwapService {
    */
   private async prepareAndSubmitOrder(
     orderRecord: CrossChainOrderRecord,
-    userAddress: string,
+    evmAddress: string,
     sourceChain: string,
     evmPrivateKey: string,
     nearKeypair?: KeyPairString,
@@ -179,18 +173,24 @@ export class CrossChainSwapService {
       // Update phase to preparing
       await this.updateOrderPhase(orderRecord.id, 'preparing');
 
-      // Step 3: Prepare order with relayer
+      // Determine source and destination addresses based on chain direction
+      const sourceIsNear = isNearChain(sourceChain);
+      const userSrcAddress = sourceIsNear ? (nearAccountId || '') : evmAddress;
+      const userDstAddress = sourceIsNear ? evmAddress : (nearAccountId || '');
+
+      // Step 3: Prepare order with relayer (updated format)
       const prepareRequest = {
-        userAddress,
+        userSrcAddress,
+        userDstAddress,
         amount: orderRecord.sourceAmount,
-        fromToken: orderRecord.sourceToken,
-        toToken: orderRecord.destinationToken,
+        fromToken: 'usdc', // Use token symbol instead of contract address
+        toToken: 'usdc',   // Use token symbol instead of contract address
         fromChain: orderRecord.sourceChain,
         toChain: orderRecord.destinationChain,
         secretHash: orderRecord.secretHash,
       };
 
-      console.log('Preparing order with relayer...');
+      console.log('Preparing order with relayer:', prepareRequest);
       const prepareResponse = await this.relayerClient.prepareOrder(prepareRequest);
       
       // Update database with order hash and prepared order data

@@ -41,14 +41,15 @@ export async function signOrderHashNEAR(
   try {
     const keyPair = KeyPair.fromString(nearKeypair);
     
-    // Convert order hash to bytes for NEAR signing
-    const messageBytes = Buffer.from(orderHash.startsWith('0x') ? orderHash.slice(2) : orderHash, 'hex');
+    // Convert order hash to bytes for NEAR signing (Web API compatible)
+    const hexString = orderHash.startsWith('0x') ? orderHash.slice(2) : orderHash;
+    const messageBytes = ethers.getBytes('0x' + hexString);
     
     // Sign with NEAR keypair
     const signature = keyPair.sign(messageBytes);
     
-    // Convert signature to hex string for compatibility with relayer
-    const signatureHex = `0x${Buffer.from(signature.signature).toString('hex')}`;
+    // Convert signature to hex string for compatibility with relayer (Web API compatible)
+    const signatureHex = ethers.hexlify(signature.signature);
     
     console.log('NEAR Order hash signed successfully:', {
       orderHash,
@@ -129,15 +130,15 @@ export async function signSecretRevealNEAR(
   try {
     const keyPair = KeyPair.fromString(nearKeypair);
     
-    // Create simple message to sign for secret reveal
+    // Create simple message to sign for secret reveal (Web API compatible)
     const message = `Revealing secret for order ${orderHash}: ${secret}`;
-    const messageBytes = Buffer.from(message, 'utf8');
+    const messageBytes = new TextEncoder().encode(message);
     
     // Sign with NEAR keypair
     const signature = keyPair.sign(messageBytes);
     
-    // Convert signature to hex string for compatibility with relayer
-    const signatureHex = `0x${Buffer.from(signature.signature).toString('hex')}`;
+    // Convert signature to hex string for compatibility with relayer (Web API compatible)
+    const signatureHex = ethers.hexlify(signature.signature);
     
     console.log('NEAR Secret reveal signed successfully:', {
       orderHash,
@@ -183,8 +184,8 @@ export async function signSecretReveal(
  * Generate random number and its keccak256 hash
  */
 export function generateSecretAndHash(): { secret: string; secretHash: string } {
-  // Generate a random 32-byte value
-  const randomBytes = ethers.randomBytes(32);
+  // Generate a random 32-byte value using Web Crypto API (Cloudflare Workers compatible)
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
   const secret = ethers.hexlify(randomBytes);
   
   // Hash the secret using keccak256

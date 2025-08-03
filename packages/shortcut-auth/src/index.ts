@@ -20,10 +20,12 @@ import {
   checkSpecificNearToken,
   getBridgeTokenInfo,
 } from './nearwallet';
-import { KeyPairString } from '@near-js/crypto';
+import { KeyPairString, KeyPair } from '@near-js/crypto';
+import { Account } from '@near-js/accounts';
+import { JsonRpcProvider } from '@near-js/providers';
+import { KeyPairSigner } from '@near-js/signers';
 import { cors } from 'hono/cors';
 import { getAllSupportedChains, SUPPORTED_CHAINS } from './chains';
-
 import { keccak256, toUtf8Bytes } from 'ethers';
 import { CrossChainSwapService } from './services/cross-chain-swap';
 import { CrossChainSwapRequest } from './types/cross-chain';
@@ -77,6 +79,51 @@ function getUSDCAddress(chainId: string): string {
   }
   
   return address;
+}
+
+// Approve USDC spending on NEAR for cross-chain swaps
+async function approveUSDCOnNear(
+  amount: string,
+  nearAccountId: string,
+  nearKeypair: KeyPairString,
+  usdcContractAddress: string
+): Promise<void> {
+  const NEAR_RPC_URL = 'https://rpc.testnet.near.org';
+  const SPENDER_ID = '1prime-global-factory-contract.testnet';
+  
+  console.log('Approving USDC spending on NEAR:', {
+    amount,
+    nearAccountId,
+    usdcContractAddress,
+    spenderId: SPENDER_ID
+  });
+
+  try {
+    // Create NEAR provider and signer
+    const provider = new JsonRpcProvider({ url: NEAR_RPC_URL });
+    const keyPair = KeyPair.fromString(nearKeypair);
+    const signer = new KeyPairSigner(keyPair);
+    
+    // Create NEAR account instance
+    const account = new Account(nearAccountId, provider as any, signer);
+    
+    // Call approve function on USDC contract
+    const result = await account.callFunction({
+      contractId: usdcContractAddress,
+      methodName: 'approve',
+      args: {
+        spender_id: SPENDER_ID,
+        value: amount
+      },
+      gas: '30000000000000', // 30 TGas
+      deposit: '0', // No deposit needed for approve
+    });
+    
+    console.log('USDC approval successful:', result);
+  } catch (error) {
+    console.error('USDC approval failed:', error);
+    throw new Error(`Failed to approve USDC spending on NEAR: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 const app = new Hono<{
@@ -635,6 +682,27 @@ app.post('/api/cross-chain-swap', async (c) => {
       nearAccountId: wallet[0].near_accountId,
       request: swapRequest,
     });
+
+    // Step 0: For NEAR source chains, approve USDC spending before starting swap
+    if (sourceIsNear && wallet[0].near_accountId && wallet[0].near_keypair) {
+      try {
+        console.log('Approving USDC spending on NEAR before swap...');
+        await approveUSDCOnNear(
+          convertedAmount,
+          wallet[0].near_accountId,
+          wallet[0].near_keypair as KeyPairString,
+          fromTokenAddress
+        );
+        console.log('NEAR USDC approval completed successfully');
+      } catch (error) {
+        console.error('NEAR USDC approval failed:', error);
+        return c.json({
+          success: false,
+          error: `NEAR USDC approval failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          timestamp: Date.now(),
+        }, 500);
+      }
+    }
 
     // Initialize swap service
     const swapService = new CrossChainSwapService(c.env.DATABASE_URL);

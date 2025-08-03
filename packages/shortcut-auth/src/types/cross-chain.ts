@@ -18,6 +18,16 @@
  * USDC Addresses (auto-assigned by API):
  * - ETH Sepolia: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
  * - NEAR Testnet: 3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af
+ * 
+ * NEAR Approval Flow:
+ * - For NEAR → EVM swaps: API automatically calls approve() on USDC contract
+ * - Approves "1prime-global-factory-contract.testnet" to spend user's USDC
+ * - Happens before relayer order preparation
+ * 
+ * Relayer API Format (sent to /orders/prepare):
+ * - userSrcAddress: User's address on source chain (EVM address or NEAR account)
+ * - userDstAddress: User's address on destination chain (EVM address or NEAR account)
+ * - fromToken/toToken: "usdc" (token symbol, not contract address)
  */
 export interface CrossChainSwapRequest {
   amount: string;    // User-friendly amount (e.g., "10" for 10 USDC, gets converted to "10000000")
@@ -31,7 +41,8 @@ export interface CrossChainSwapRequest {
 }
 
 export interface GenerateOrderRequest {
-  userAddress: string;
+  userSrcAddress: string; // User address on source chain
+  userDstAddress: string; // User address on destination chain
   amount: string;
   fromToken: string;
   toToken: string;
