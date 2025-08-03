@@ -80,7 +80,7 @@ export const CHAIN_CONFIGS: Record<string, ChainConfig> = {
   } as ChainConfig,
 
   // Ethereum Sepolia Testnet
-  sepolia: {
+  "eth-sepolia": {
     ...DEFAULT_EVM_CONFIG,
     chainId: "11155111",
     name: "Sepolia Testnet",
@@ -105,7 +105,7 @@ export const SUPPORTED_CHAIN_PAIRS = [
   ["polygon", "near"],
   ["arbitrum", "near"],
   // Testnet pairs
-  ["sepolia", "near-testnet"],
+  ["eth-sepolia", "near-testnet"],
 ] as const;
 
 export const getChainConfig = (chainId: string): ChainConfig => {
@@ -133,6 +133,7 @@ export const getEscrowFactoryAddress = (chainId: string): string => {
  * Convert chain ID to chain name
  */
 export const getChainNameFromChainId = (chainId: string): string | null => {
+  console.log("chainId", chainId);
   const config = Object.entries(CHAIN_CONFIGS).find(
     ([_, config]) => config.chainId === chainId
   );

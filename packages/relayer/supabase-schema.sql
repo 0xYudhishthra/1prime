@@ -11,6 +11,8 @@
 CREATE TABLE orders (
   "orderHash" TEXT PRIMARY KEY,
   "maker" TEXT NOT NULL,
+  "userSrcAddress" TEXT NOT NULL, -- User address on source chain
+  "userDstAddress" TEXT NOT NULL, -- User address on destination chain
   "sourceChain" TEXT NOT NULL,
   "destinationChain" TEXT NOT NULL,
   "sourceToken" TEXT NOT NULL,
@@ -38,6 +40,11 @@ CREATE TABLE orders (
   "enhancedAuctionDetails" JSONB, -- Enhanced auction with price curve points
   "sourceEscrowDeployedAt" BIGINT, -- When source escrow deployed (E1) - critical for timelock calculation
   "destinationEscrowDeployedAt" BIGINT, -- When destination escrow deployed (E2) - critical for timelock calculation
+  
+  -- NEAR address compatibility fields for cross-chain support
+  "originalAddresses" JSONB, -- Original addresses (for NEAR compatibility): {userAddress, fromToken, toToken, escrowFactory}
+  "processedAddresses" JSONB, -- Processed addresses (EVM placeholders): {userAddress, fromToken, toToken, escrowFactory}
+  "nearAddressMappings" JSONB, -- EVM placeholder -> original NEAR address mappings
   
   -- Indexes for efficient querying
   CONSTRAINT valid_chain_pair CHECK (
