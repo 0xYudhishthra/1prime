@@ -1,8 +1,6 @@
 'use client';
 
-import type React from 'react';
-
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,7 +39,7 @@ export default function SignUpPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ email, password }),
-        }
+        },
       );
 
       if (response.ok) {

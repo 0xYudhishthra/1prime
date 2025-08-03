@@ -1,0 +1,1083 @@
+openapi: 3.1.3
+info:
+  title: Cross-Chain Swap API
+  description: |
+    A proof-of-concept API for cross-chain swaps between EVM chains and NEAR protocol.
+    Designed for Apple Shortcuts integration with Siri voice control.
+
+    ## Authentication Flow
+    1. Sign up with email/password to get auth token
+    2. Store token in Downloads/ folder for Shortcuts access
+    3. EVM and NEAR wallets are automatically generated and linked
+
+    ## Multi-Chain Support
+    - EVM chains: Ethereum Sepolia, Arbitrum Sepolia, Optimism Sepolia
+    - Smart wallets deployed on all supported chains with same address
+    - Comprehensive token discovery: Native tokens (ETH, NEAR) + all supported tokens (ERC-20s, NEP-141s)
+    - Chain-abstracted balance views for unified multi-token wallet management
+
+    ## Security Note
+    This is a proof-of-concept with simplified security for validation purposes.
+  version: 1.0.0
+  contact:
+    name: Cross-Chain Swap Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://shortcut-auth.tanweihup.workers.dev
+    description: Production server
+  - url: http://localhost:8787
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /sign-up/email:
+    post:
+      tags:
+        - Authentication
+      summary: Create new user account with email/password
+      description: |
+        Creates a new user account and automatically generates both EVM and NEAR wallets.
+        EVM smart wallets are deployed on all supported chains with the same address.
+        Returns authentication token that should be stored in Downloads/ folder.
+      security: [] # No auth required for signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: 'user@example.com'
+                password:
+                  type: string
+                  minLength: 6
+                  maxLength: 10
+                  example: 'password123'
+      responses:
+        '200':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                type: string
+                description: Bearer token for authentication
+                example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        '500':
+          description: Failed to create account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                evm_error:
+                  value:
+                    error: 'Failed to create multi-chain evm account'
+                near_error:
+                  value:
+                    error: 'Failed to create near account'
+                rpc_missing:
+                  value:
+                    error: 'Missing required ZeroDev RPC URLs for chains: 11155111, 421614'
+
+  /sign-in/email:
+    post:
+      tags:
+        - Authentication
+      summary: Sign in with email/password
+      description: |
+        Authenticates existing user with email and password.
+        Returns authentication token for accessing protected endpoints.
+      security: [] # No auth required for signin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: 'user@example.com'
+                password:
+                  type: string
+                  example: 'password123'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: string
+                description: Bearer token for authentication
+                example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Authentication failed'
+
+  /api/send-transaction:
+    post:
+      tags:
+        - EVM Transactions
+      summary: Send EVM transaction
+      description: Sends a test EVM transaction using the user's smart wallet on Arbitrum Sepolia
+      responses:
+        '200':
+          description: Transaction sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  txnHash:
+                    type: string
+                    description: Transaction hash
+                    example: '0x1234567890abcdef...'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
+        '500':
+          description: Failed to send transaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Failed to send transaction'
+
+  /api/send-near-transaction:
+    post:
+      tags:
+        - NEAR Transactions
+      summary: Send NEAR transaction
+      description: Sends a test NEAR transaction (0.1 NEAR to self)
+      responses:
+        '200':
+          description: Transaction sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    description: NEAR transaction result
+                    properties:
+                      final_execution_status:
+                        type: string
+                      transaction:
+                        type: object
+                      receipts_outcome:
+                        type: array
+                        items:
+                          type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
+        '500':
+          description: Server error or no NEAR account found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no_account:
+                  value:
+                    error: 'No near account found'
+                transaction_failed:
+                  value:
+                    error: 'Failed to send NEAR transaction'
+
+  /api/random-number:
+    get:
+      tags:
+        - Test Endpoints
+      summary: Get random number (test endpoint)
+      description: Returns a random number to test authentication
+      responses:
+        '200':
+          description: Random number generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  number:
+                    type: integer
+                    minimum: 0
+                    maximum: 99
+                    example: 42
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /create-near-account:
+    get:
+      tags:
+        - Test Endpoints
+      summary: Create test NEAR account
+      description: Test endpoint to create a NEAR account (development only)
+      security: []
+      responses:
+        '200':
+          description: NEAR account created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nearAccount:
+                    type: object
+                    properties:
+                      accountId:
+                        type: string
+                        example: '4ervtktfnuw7kwxaervheolyggrdncxo.testnet'
+                      keyPair:
+                        type: object
+                      transaction:
+                        type: object
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/wallet/supported-chains:
+    get:
+      tags:
+        - Wallet
+      summary: Get supported EVM testnet chains
+      description: Returns list of supported EVM testnet chains for cross-chain operations
+      security: [] # No auth required
+      responses:
+        '200':
+          description: Supported chains retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chains:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chainId:
+                          type: integer
+                          example: 421614
+                        name:
+                          type: string
+                          example: 'Arbitrum Sepolia'
+              example:
+                chains:
+                  - chainId: 11155111
+                    name: 'Ethereum Sepolia'
+                  - chainId: 421614
+                    name: 'Arbitrum Sepolia'
+                  - chainId: 11155420
+                    name: 'Optimism Sepolia'
+
+  /api/wallet/addresses:
+    get:
+      tags:
+        - Wallet
+      summary: Get wallet addresses for all supported chains
+      description: |
+        Returns both EVM (smart wallet and EOA) and NEAR wallet addresses.
+        The smart wallet address is the same across all supported EVM testnet chains.
+      responses:
+        '200':
+          description: Wallet addresses retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evm:
+                    type: object
+                    properties:
+                      smartWallet:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                            example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                          note:
+                            type: string
+                            example: 'Send funds here for smart wallet operations. Same address works on all supported EVM chains.'
+                      eoa:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                            example: '0xE86eef3Dfc60939155Cb2139fb32f41e6996ba72'
+                          note:
+                            type: string
+                            example: 'This is your MetaMask address if you import the private key. Smart wallet operations use the address above.'
+                  near:
+                    type: object
+                    properties:
+                      accountId:
+                        type: string
+                        example: 'ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet'
+                  supportedChains:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chainId:
+                          type: integer
+                          example: 421614
+                        name:
+                          type: string
+                          example: 'Arbitrum Sepolia'
+                  usage:
+                    type: object
+                    properties:
+                      deposits:
+                        type: string
+                        example: 'Send EVM funds to evm.smartWallet.address for best experience'
+                      transactions:
+                        type: string
+                        example: 'All smart wallet operations use evm.smartWallet.address across all supported chains'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
+        '500':
+          description: Failed to fetch addresses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Failed to fetch addresses'
+
+  /api/wallet/near/bridge-info:
+    get:
+      tags:
+        - Wallet
+      summary: Get NEAR bridge token information
+      description: |
+        Returns information about bridging tokens from Ethereum to NEAR and common bridged token account IDs.
+        Helpful for understanding how bridged tokens work and troubleshooting missing tokens.
+      security: [] # No auth required
+      responses:
+        '200':
+          description: Bridge information retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'NEAR bridge token information'
+                  note:
+                    type: string
+                    example: 'Bridged tokens from Ethereum to NEAR use the Rainbow Bridge'
+                  bridgeUrl:
+                    type: string
+                    example: 'https://rainbowbridge.app/'
+                  commonBridgedTokens:
+                    type: object
+                    properties:
+                      USDC:
+                        type: string
+                        example: 'a0b86a33e6417c19a435e21fe8ec9b8e57c81e52.factory.bridge.near'
+                      USDT:
+                        type: string
+                        example: 'dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near'
+                      WETH:
+                        type: string
+                        example: 'c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2.factory.bridge.near'
+                      DAI:
+                        type: string
+                        example: '6b175474e89094c44da98b954eedeac495271d0f.factory.bridge.near'
+                  instructions:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - '1. Go to https://rainbowbridge.app/'
+                      - '2. Connect your wallet'
+                      - '3. Select token and amount to bridge'
+                      - '4. Tokens will appear with pattern: [eth-contract-address].factory.bridge.near'
+                  troubleshooting:
+                    type: object
+                    properties:
+                      issue:
+                        type: string
+                      solution:
+                        type: string
+                        example: 'Use the /check-token endpoint below to manually verify specific token contracts'
+                      commonIssues:
+                        type: array
+                        items:
+                          type: string
+                        example:
+                          - 'Token bridged to mainnet instead of testnet'
+                          - 'Token has a different account ID pattern'
+                          - 'Bridge transaction failed or is still pending'
+
+  /api/wallet/near/check-token:
+    post:
+      tags:
+        - Wallet
+      summary: Check specific NEAR token balance
+      description: |
+        Manually check the balance of a specific NEP-141 token on NEAR by its account ID.
+        Useful for debugging bridged tokens or checking tokens not in the default list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tokenAccountId
+              properties:
+                tokenAccountId:
+                  type: string
+                  description: The NEAR account ID of the token contract
+                  example: 'a0b86a33e6417c19a435e21fe8ec9b8e57c81e52.factory.bridge.near'
+      responses:
+        '200':
+          description: Token check completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  found:
+                    type: boolean
+                    example: true
+                  tokenBalance:
+                    type: object
+                    properties:
+                      token:
+                        type: object
+                        properties:
+                          accountId:
+                            type: string
+                            example: 'a0b86a33e6417c19a435e21fe8ec9b8e57c81e52.factory.bridge.near'
+                          symbol:
+                            type: string
+                            example: 'USDC'
+                          name:
+                            type: string
+                            example: 'USD Coin'
+                          decimals:
+                            type: integer
+                            example: 6
+                      balance:
+                        type: object
+                        properties:
+                          raw:
+                            type: string
+                            example: '5000000'
+                          formatted:
+                            type: string
+                            example: '5.0'
+                  message:
+                    type: string
+                    example: 'Found 5.0 USDC'
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                    description: Only present when found=false
+                    example:
+                      - 'Check if the token account ID is correct'
+                      - 'Verify the token exists on NEAR testnet'
+        '400':
+          description: Missing tokenAccountId parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'tokenAccountId is required'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet or NEAR account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no_wallet:
+                  value:
+                    error: 'Wallet not found'
+                no_near:
+                  value:
+                    error: 'No NEAR account found'
+        '500':
+          description: Failed to check token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Failed to check token'
+
+  /api/wallet/testnet-tokens:
+    get:
+      tags:
+        - Wallet
+      summary: Get testnet token information and faucet links
+      description: |
+        Returns information about supported testnet tokens and links to faucets where you can get them.
+        Helpful for testing the multi-token wallet functionality.
+      security: [] # No auth required
+      responses:
+        '200':
+          description: Testnet token information retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Testnet token information and faucet links'
+                  faucets:
+                    type: object
+                    properties:
+                      nativeTokens:
+                        type: object
+                        description: Faucet links for native tokens (ETH)
+                        properties:
+                          'Ethereum Sepolia':
+                            type: string
+                            example: 'https://sepoliafaucet.com/'
+                          'Arbitrum Sepolia':
+                            type: string
+                            example: 'https://faucet.quicknode.com/arbitrum/sepolia'
+                          'Optimism Sepolia':
+                            type: string
+                            example: 'https://faucet.quicknode.com/optimism/sepolia'
+                      erc20Tokens:
+                        type: object
+                        properties:
+                          note:
+                            type: string
+                            example: 'Most ERC-20 tokens on testnets require minting from their contracts or specific faucets'
+                          instructions:
+                            type: string
+                            example: 'Visit the token contract on etherscan and look for mint/faucet functions, or check project documentation for testnet token faucets'
+                  tokenAddresses:
+                    type: object
+                    description: Contract addresses for supported testnet tokens
+                    properties:
+                      '11155111':
+                        type: array
+                        description: Ethereum Sepolia tokens
+                        items:
+                          type: object
+                          properties:
+                            address:
+                              type: string
+                              example: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9'
+                            symbol:
+                              type: string
+                              example: 'WETH'
+                      '421614':
+                        type: array
+                        description: Arbitrum Sepolia tokens
+                        items:
+                          type: object
+                          properties:
+                            address:
+                              type: string
+                              example: '0x980B62Da83eFf3D4576C647993b0c1D7faf17c73'
+                            symbol:
+                              type: string
+                              example: 'WETH'
+                  instructions:
+                    type: object
+                    properties:
+                      step1:
+                        type: string
+                        example: 'Get native tokens (ETH) from the faucets listed above'
+                      step2:
+                        type: string
+                        example: 'For ERC-20 tokens, you may need to mint them from the contract or find specific token faucets'
+                      step3:
+                        type: string
+                        example: 'Check token contract pages on Etherscan for mint/faucet functions'
+                      step4:
+                        type: string
+                        example: 'Some tokens may not be available on all testnets - this is normal'
+
+  /api/wallet/balances:
+    get:
+      tags:
+        - Wallet
+      summary: Get comprehensive multi-token wallet balances across all chains
+      description: |
+        Returns comprehensive token balances across all supported EVM chains and NEAR protocol.
+        Includes native tokens (ETH, NEAR) and all supported tokens (ERC-20s, NEP-141s).
+        Provides both chain-abstracted totals and per-chain breakdowns.
+        No parameters required - automatically discovers and fetches all tokens.
+      responses:
+        '200':
+          description: Comprehensive wallet balances retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evm:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                        example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                        description: Smart wallet address (same across all EVM chains)
+                      totalBalances:
+                        type: array
+                        description: Aggregated token balances across all EVM chains
+                        items:
+                          type: object
+                          properties:
+                            token:
+                              type: object
+                              properties:
+                                address:
+                                  type: string
+                                  example: 'native'
+                                  description: Token contract address or 'native' for ETH
+                                symbol:
+                                  type: string
+                                  example: 'ETH'
+                                name:
+                                  type: string
+                                  example: 'Ethereum'
+                                decimals:
+                                  type: integer
+                                  example: 18
+                                chainId:
+                                  type: integer
+                                  example: 11155111
+                                  description: Primary chain where token was first discovered
+                            balance:
+                              type: object
+                              properties:
+                                raw:
+                                  type: string
+                                  example: '3000000000000000000'
+                                  description: Total balance across all chains in smallest unit
+                                formatted:
+                                  type: string
+                                  example: '3.0'
+                                  description: Human-readable total balance
+                            chainBreakdown:
+                              type: array
+                              description: Per-chain breakdown of this token
+                              items:
+                                type: object
+                                properties:
+                                  chainId:
+                                    type: integer
+                                    example: 421614
+                                  chainName:
+                                    type: string
+                                    example: 'Arbitrum Sepolia'
+                                  balance:
+                                    type: object
+                                    properties:
+                                      raw:
+                                        type: string
+                                        example: '1000000000000000000'
+                                      formatted:
+                                        type: string
+                                        example: '1.0'
+                      chainBreakdown:
+                        type: array
+                        description: Comprehensive per-chain token breakdown
+                        items:
+                          type: object
+                          properties:
+                            chainId:
+                              type: integer
+                              example: 421614
+                            chainName:
+                              type: string
+                              example: 'Arbitrum Sepolia'
+                            address:
+                              type: string
+                              example: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                              description: Smart wallet address on this chain
+                            tokens:
+                              type: array
+                              description: All tokens with balances on this chain
+                              items:
+                                type: object
+                                properties:
+                                  token:
+                                    type: object
+                                    properties:
+                                      address:
+                                        type: string
+                                        example: '0xA0b86a33E6417c19A435e21fe8EC9b8e57c81E52'
+                                      symbol:
+                                        type: string
+                                        example: 'USDC'
+                                      name:
+                                        type: string
+                                        example: 'USD Coin'
+                                      decimals:
+                                        type: integer
+                                        example: 6
+                                      chainId:
+                                        type: integer
+                                        example: 11155111
+                                  balance:
+                                    type: object
+                                    properties:
+                                      raw:
+                                        type: string
+                                        example: '1000000'
+                                      formatted:
+                                        type: string
+                                        example: '1.0'
+                      supportedChains:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            chainId:
+                              type: integer
+                              example: 421614
+                            name:
+                              type: string
+                              example: 'Arbitrum Sepolia'
+                      note:
+                        type: string
+                        example: 'Token balances aggregated across all supported EVM chains'
+                  near:
+                    type: object
+                    properties:
+                      accountId:
+                        type: string
+                        example: 'ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet'
+                      tokens:
+                        type: array
+                        description: All NEAR tokens (native NEAR + NEP-141 tokens)
+                        items:
+                          type: object
+                          properties:
+                            token:
+                              type: object
+                              properties:
+                                accountId:
+                                  type: string
+                                  example: 'usdc.fakes.testnet'
+                                  description: Token contract account ID or 'native' for NEAR
+                                symbol:
+                                  type: string
+                                  example: 'USDC'
+                                name:
+                                  type: string
+                                  example: 'USD Coin'
+                                decimals:
+                                  type: integer
+                                  example: 6
+                            balance:
+                              type: object
+                              properties:
+                                raw:
+                                  type: string
+                                  example: '5000000000000000000000000'
+                                formatted:
+                                  type: string
+                                  example: '5.0000'
+                  summary:
+                    type: object
+                    properties:
+                      totalEvmChains:
+                        type: integer
+                        example: 3
+                        description: Total number of supported EVM chains
+                      evmChainsWithBalance:
+                        type: integer
+                        example: 2
+                        description: Number of EVM chains with non-zero token balances
+                      totalEvmTokens:
+                        type: integer
+                        example: 4
+                        description: Total number of unique EVM tokens with balances
+                      totalNearTokens:
+                        type: integer
+                        example: 3
+                        description: Total number of NEAR tokens with balances
+                      hasNearBalance:
+                        type: boolean
+                        example: true
+                        description: Whether any NEAR tokens have non-zero balances
+              example:
+                evm:
+                  address: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                  totalBalances:
+                    - token:
+                        address: 'native'
+                        symbol: 'ETH'
+                        name: 'Ethereum'
+                        decimals: 18
+                        chainId: 11155111
+                      balance:
+                        raw: '300000000000000000'
+                        formatted: '0.3'
+                      chainBreakdown:
+                        - chainId: 11155111
+                          chainName: 'Ethereum Sepolia'
+                          balance:
+                            raw: '200000000000000000'
+                            formatted: '0.2'
+                        - chainId: 11155420
+                          chainName: 'Optimism Sepolia'
+                          balance:
+                            raw: '100000000000000000'
+                            formatted: '0.1'
+                    - token:
+                        address: '0xA0b86a33E6417c19A435e21fe8EC9b8e57c81E52'
+                        symbol: 'USDC'
+                        name: 'USD Coin'
+                        decimals: 6
+                        chainId: 11155111
+                      balance:
+                        raw: '2000000'
+                        formatted: '2.0'
+                      chainBreakdown:
+                        - chainId: 11155111
+                          chainName: 'Ethereum Sepolia'
+                          balance:
+                            raw: '2000000'
+                            formatted: '2.0'
+                  chainBreakdown:
+                    - chainId: 11155111
+                      chainName: 'Ethereum Sepolia'
+                      address: '0x321fBF99d74b02f405CbD7D5b59F6D01A047814e'
+                      tokens:
+                        - token:
+                            address: 'native'
+                            symbol: 'ETH'
+                            name: 'Ethereum'
+                            decimals: 18
+                            chainId: 11155111
+                          balance:
+                            raw: '200000000000000000'
+                            formatted: '0.2'
+                        - token:
+                            address: '0xA0b86a33E6417c19A435e21fe8EC9b8e57c81E52'
+                            symbol: 'USDC'
+                            name: 'USD Coin'
+                            decimals: 6
+                            chainId: 11155111
+                          balance:
+                            raw: '2000000'
+                            formatted: '2.0'
+                  supportedChains:
+                    - chainId: 11155111
+                      name: 'Ethereum Sepolia'
+                    - chainId: 421614
+                      name: 'Arbitrum Sepolia'
+                    - chainId: 11155420
+                      name: 'Optimism Sepolia'
+                  note: 'Token balances aggregated across all supported EVM chains'
+                near:
+                  accountId: 'ssxkqow2xbmcjkoxct6sezew6op1snm3.testnet'
+                  tokens:
+                    - token:
+                        accountId: 'native'
+                        symbol: 'NEAR'
+                        name: 'NEAR Protocol'
+                        decimals: 24
+                      balance:
+                        raw: '12000000000000000000000000'
+                        formatted: '12.0000'
+                    - token:
+                        accountId: 'usdc.fakes.testnet'
+                        symbol: 'USDC'
+                        name: 'USD Coin'
+                        decimals: 6
+                      balance:
+                        raw: '5000000'
+                        formatted: '5.0'
+                summary:
+                  totalEvmChains: 3
+                  evmChainsWithBalance: 2
+                  totalEvmTokens: 2
+                  totalNearTokens: 2
+                  hasNearBalance: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Wallet not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Wallet not found'
+        '500':
+          description: Failed to fetch balances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Failed to fetch balances'
+
+  /api/**:
+    get:
+      tags:
+        - Authentication
+      summary: Better-Auth endpoints
+      description: |
+        Handles various authentication endpoints provided by better-auth library.
+        These include session management, token refresh, etc.
+      responses:
+        '200':
+          description: Varies by specific endpoint
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+        - Authentication
+      summary: Better-Auth endpoints
+      description: |
+        Handles various authentication endpoints provided by better-auth library.
+        These include session management, token refresh, etc.
+      responses:
+        '200':
+          description: Varies by specific endpoint
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Bearer token obtained from /sign-up/email or /sign-in/email endpoints.
+        Store this token in Downloads/ folder for Apple Shortcuts access.
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: 'Unauthorized'
+
+    WalletInfo:
+      type: object
+      properties:
+        evm:
+          type: object
+          properties:
+            smartAccountAddress:
+              type: string
+              example: '0x1234567890abcdef...'
+            chainId:
+              type: integer
+              example: 421614
+            kernelVersion:
+              type: string
+              example: 'v3.1'
+        near:
+          type: object
+          properties:
+            accountId:
+              type: string
+              example: 'user123.testnet'
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Unauthorized'
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+tags:
+  - name: Authentication
+    description: User authentication and account management
+  - name: Wallet
+    description: Multi-chain, multi-token wallet operations (native + ERC-20 + NEP-141)
+  - name: EVM Transactions
+    description: Ethereum Virtual Machine transaction operations
+  - name: NEAR Transactions
+    description: NEAR Protocol transaction operations
+  - name: Test Endpoints
+    description: Development and testing endpoints
+
+# Future endpoints for UX flow completion
+x-future-endpoints:
+  deposit:
+    - GET /api/deposit/address/{chain} - Get deposit address for specific chain
+    - POST /api/deposit/verify - Verify deposit transaction
+
+  swap:
+    - GET /api/swap/tokens/{chain} - Get supported tokens for chain
+    - POST /api/swap/quote - Get swap quote using 1inch Fusion+
+    - POST /api/swap/execute - Execute swap order
+    - GET /api/swap/status/{orderId} - Check swap status
+
+  wallet:
+    - POST /api/wallet/transfer - Transfer funds between chains or to/from EOA
+    - GET /api/wallet/transactions - Get transaction history
+    - POST /api/wallet/tokens/add - Add custom token to tracking list
+    - DELETE /api/wallet/tokens/{address} - Remove token from tracking
+    - GET /api/wallet/tokens/discover - Auto-discover tokens with balances
