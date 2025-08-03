@@ -40,12 +40,27 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+          <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500 mb-10">
             <strong>Quick Start:</strong> Import the shortcut above, then say
             <span className="mx-1 rounded bg-white px-2 py-1 font-mono">
               "Hey Siri, Login to 1Prime"
             </span>
           </div>
+                      <a
+              href="https://www.icloud.com/shortcuts/ddc64c83175f438cbf016bcdbabb5dcf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className='mt-10'
+            >
+              <Button
+                size="lg"
+                className="bg-gray-800 text-white hover:bg-gray-700"
+              >
+                <Smartphone className="mr-2 h-5 w-5" />
+                Swap Now
+              </Button>
+            </a>
+
         </div>
       </section>
 
@@ -220,6 +235,18 @@ export default function HomePage() {
                 className="bg-white text-black hover:bg-gray-100"
               >
                 Import Apple Shortcut
+              </Button>
+            </a>
+            <a
+              href="https://www.icloud.com/shortcuts/ddc64c83175f438cbf016bcdbabb5dcf"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                size="lg"
+                className="bg-gray-200 text-black hover:bg-gray-300"
+              >
+                Swap Now
               </Button>
             </a>
             <Link href="/auth/signup">
