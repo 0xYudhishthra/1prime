@@ -1,71 +1,286 @@
-# Unite DeFi
+# 1Prime Protocol
 
-A DeFi protocol built with pnpm and bun.
+![1Prime Logo](packages/1prime-website/public/logo.png)
 
-## Prerequisites
+**Secure Cross-Chain Atomic Swaps between EVM Chains and NEAR Protocol**
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- [pnpm](https://pnpm.io/) (v8.15.0 or higher)
-- [bun](https://bun.sh/) (v1.0.0 or higher)
+1Prime Protocol enables trustless, atomic swaps between EVM-compatible blockchains (Ethereum, Base, BSC, Polygon, Arbitrum) and NEAR Protocol using a sophisticated relayer-resolver architecture built on 1inch Fusion+ technology.
 
-## Installation
+## Key Features
 
-1. Install pnpm globally (if not already installed):
-   ```bash
-   npm install -g pnpm@8.15.0
-   ```
+- **Cross-Chain Compatibility**: Seamless swaps between EVM chains ↔ NEAR Protocol
+- **Atomic Security**: All-or-nothing execution prevents partial completion risks
+- **On-Chain Verification**: Independent escrow verification before secret revelation
+- **Real-Time Updates**: WebSocket-powered live order tracking
+- **1inch Fusion+ Integration**: Built on proven 1inch technology with NEAR extensions
+- **User-Friendly**: Simple frontend interface with Apple Shortcuts integration
 
-2. Install bun (if not already installed):
-   ```bash
-   curl -fsSL https://bun.sh/install | bash
-   ```
-
-3. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-## Development
-
-- **Start development server**: `pnpm dev`
-- **Run tests**: `pnpm test`
-- **Build project**: `pnpm build`
-- **Lint code**: `pnpm lint`
-- **Format code**: `pnpm format`
-
-## Project Structure
+## Architecture Overview
 
 ```
-unite-defi/
-├── src/           # Source code
-├── packages/      # Workspace packages
-├── apps/          # Applications
-├── test/          # Test files
-├── dist/          # Build output
-└── docs/          # Documentation
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │    Relayer      │    │   Resolver      │
+│  (Web + iOS)    │◄──►│   (Orchestrator)│◄──►│  (Executioner)  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                        │                        │
+         │                        │                        │
+         ▼                        ▼                        ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Cross-Chain SDK │    │   EVM Contracts │    │ NEAR Contracts  │
+│   (TypeScript)  │    │   (Solidity)    │    │     (Rust)      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Workspace Configuration
+### Package Structure
 
-This project uses pnpm workspaces for monorepo management. The workspace is configured in `pnpm-workspace.yaml` and supports:
+| Package                                          | Purpose                                   | Technology                      |
+| ------------------------------------------------ | ----------------------------------------- | ------------------------------- |
+| [`1prime-website`](./packages/1prime-website/)   | Frontend web application                  | Next.js, React, TailwindCSS     |
+| [`cross-chain-sdk`](./packages/cross-chain-sdk/) | TypeScript SDK for cross-chain operations | TypeScript, 1inch Fusion+ SDK   |
+| [`relayer`](./packages/relayer/)                 | Central orchestration service             | Node.js, TypeScript, PostgreSQL |
+| [`resolver`](./packages/resolver/)               | Order execution service                   | Node.js, TypeScript, Web3       |
+| [`evm-contracts`](./packages/evm-contracts/)     | Smart contracts for EVM chains            | Solidity, Hardhat               |
+| [`near-contracts`](./packages/near-contracts/)   | Smart contracts for NEAR Protocol         | Rust, near-sdk                  |
+| [`shortcut-auth`](./packages/shortcut-auth/)     | Apple Shortcuts authentication            | Swift, iOS Shortcuts            |
 
-- Multiple packages in `packages/`
-- Multiple applications in `apps/`
-- Shared dependencies and tooling
+## Cross-Chain Atomic Swap Flow
 
-## Bun Integration
+The following diagram illustrates the complete flow of a cross-chain atomic swap:
 
-Bun is used for:
-- Fast TypeScript execution
-- Testing with built-in test runner
-- Bundling with `bun build`
-- Package management (configured to use pnpm)
+![Cross-Chain Swap Flow](./assets/cross-chain-flow.png)
+
+### Detailed Flow Explanation
+
+#### Phase 1: Order Creation & Preparation
+
+1. **Secret Generation**: Frontend generates a cryptographically secure random number
+2. **Hash Creation**: Secret is hashed using Keccak-256 to create `secretHash`
+3. **Order Preparation**: Frontend calls `POST /orders/prepare` with:
+   - `userSrcAddress` & `userDstAddress` (source and destination addresses)
+   - `amount`, `fromToken`, `toToken` (swap parameters)
+   - `fromChain`, `toChain` (blockchain identifiers)
+   - `secretHash` (hashed secret for atomic locks)
+
+#### Phase 2: Order Signing & Submission
+
+4. **Fusion+ Order Creation**: Relayer creates a 1inch Fusion+ order using patched SDK
+5. **Order Return**: Unsigned order with `orderHash` returned to frontend
+6. **User Signature**: User signs the Fusion+ order with their wallet
+7. **Order Submission**: Signed order submitted via `POST /orders/submit`
+
+#### Phase 3: Resolver Discovery & Claiming
+
+8. **Resolver Polling**: Resolvers continuously poll `GET /orders` for new orders
+9. **Order Claiming**: Resolver claims order via `POST /orders/{hash}/claim`
+   - Order transitions to `claimed` phase
+   - Resolver becomes `assignedResolver`
+
+#### Phase 4: Escrow Deployment & Verification
+
+10. **Escrow Deployment**: Resolver deploys escrow contracts on both chains
+11. **Deployment Confirmation**: `POST /orders/{hash}/escrow-deployed` with:
+    - Contract addresses, transaction hashes, block numbers
+    - **On-chain verification** automatically performed:
+      - ✅ Contract existence verification
+      - ✅ Transaction hash validation
+      - ✅ USDC balance confirmation
+      - ✅ Block number matching
+12. **Safety Verification**: Frontend calls `GET /orders/{hash}/verify-escrows`
+    - Independent verification that escrows are safe for secret revelation
+    - Prevents fund loss from malicious or incorrectly configured escrows
+
+#### Phase 5: Secret Revelation & Completion
+
+13. **Secret Submission**: Once verified safe, frontend calls `POST /orders/{hash}/reveal-secret`
+    - Submits the original random number (not the hash)
+    - Secret stored in database for resolver access
+14. **Secret Broadcasting**: Relayer broadcasts secret to all resolvers via WebSocket
+15. **Atomic Completion**: Resolver uses secret to unlock funds on both chains simultaneously
+
+## Security Features
+
+### On-Chain Verification
+
+- **Contract Validation**: Verifies escrow contracts exist and are properly deployed
+- **Transaction Verification**: Confirms deployment transactions using block explorers
+- **Balance Verification**: Ensures escrows contain required USDC amounts
+- **Cross-Chain APIs**: Uses native blockchain APIs (Etherscan, NearBlocks) for verification
+
+### Atomic Security
+
+- **Hash Locks**: Secret hash locks prevent premature fund access
+- **Time Locks**: Cancellation timeouts protect against stuck transactions
+- **All-or-Nothing**: Either both sides complete or both sides can recover funds
+
+### Access Control
+
+- **Resolver Assignment**: Only assigned resolver can deploy escrows for an order
+- **Verification Gates**: Multiple verification steps before secret revelation
+- **WebSocket Security**: Real-time updates without exposing sensitive data
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+
+- pnpm 8+
+- PostgreSQL 14+
+- Rust (for NEAR contracts)
+- Solidity compiler (for EVM contracts)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/unite-defi/1prime-protocol.git
+cd 1prime-protocol
+
+# Install dependencies
+pnpm install:all
+
+# Build all packages
+pnpm build:all
+```
+
+### Development Setup
+
+```bash
+# Start the relayer service
+pnpm dev:relayer
+
+# In another terminal, start the frontend
+cd packages/1prime-website
+pnpm dev
+
+# In another terminal, start the resolver
+cd packages/resolver
+pnpm dev
+```
+
+### Environment Configuration
+
+Create `.env` files in each package directory:
+
+#### Relayer Configuration (`packages/relayer/.env`)
+
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/relayer
+ETHERSCAN_API_KEY=your_etherscan_key
+NEARBLOCKS_API_KEY=your_nearblocks_key
+ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/your-key
+NEAR_RPC_URL=https://rpc.mainnet.near.org
+```
+
+#### Frontend Configuration (`packages/1prime-website/.env.local`)
+
+```env
+NEXT_PUBLIC_RELAYER_URL=http://localhost:3000
+NEXT_PUBLIC_CHAIN_ENV=testnet
+```
+
+## Documentation
+
+### Package Documentation
+
+- [**Frontend Documentation**](./packages/1prime-website/README.md) - Web interface and user experience
+- [**Cross-Chain SDK**](./packages/cross-chain-sdk/README.md) - TypeScript SDK for developers
+- [**Relayer Service**](./packages/relayer/README.md) - Central orchestration service
+- [**Resolver Service**](./packages/resolver/README.md) - Order execution and settlement
+- [**EVM Contracts**](./packages/evm-contracts/README.md) - Ethereum-compatible smart contracts
+- [**NEAR Contracts**](./packages/near-contracts/README.md) - NEAR Protocol smart contracts
+- [**Apple Shortcuts**](./packages/shortcut-auth/README.md) - iOS integration
+
+### API Documentation
+
+- [**Relayer REST API**](./packages/relayer/openapi.yaml) - Complete OpenAPI specification
+- [**WebSocket Events**](./packages/relayer/docs/websocket.md) - Real-time update documentation
+
+## Supported Networks
+
+### EVM Chains
+
+- **Ethereum Mainnet** (Chain ID: 1)
+- **Ethereum Sepolia** (Chain ID: 11155111) - Testnet
+- **Base** (Chain ID: 8453)
+- **BNB Smart Chain** (Chain ID: 56)
+- **Polygon** (Chain ID: 137)
+- **Arbitrum One** (Chain ID: 42161)
+
+### NEAR Protocol
+
+- **NEAR Mainnet** (Chain ID: mainnet)
+- **NEAR Testnet** (Chain ID: 398) - Testnet
+
+### Supported Token Pairs
+
+- **USDC** ↔ **NEAR/USDC** (Primary focus)
+- **ETH** ↔ **NEAR** (Native tokens)
+- **WETH** ↔ **NEAR** (Wrapped tokens)
 
 ## Scripts
 
-- `dev`: Start development server with hot reload
-- `start`: Run the application
-- `build`: Build the project for production
-- `test`: Run tests using bun
-- `lint`: Lint TypeScript files
-- `format`: Format code with Prettier 
+```bash
+# Development
+pnpm dev:relayer          # Start relayer in development mode
+pnpm dev:website          # Start frontend development server
+
+# Building
+pnpm build:all            # Build all packages
+pnpm build:relayer        # Build relayer service only
+pnpm build:cross-chain-sdk # Build SDK only
+
+# Testing
+pnpm test:all             # Run all tests
+pnpm test:relayer         # Test relayer service only
+
+# Linting & Formatting
+pnpm lint:all             # Lint all packages
+pnpm format:all           # Format all code
+
+# Cleanup
+pnpm clean                # Remove all node_modules and build artifacts
+```
+
+## Contributing
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes** and add tests
+4. **Run the test suite**: `pnpm test:all`
+5. **Commit your changes**: `git commit -m 'Add amazing feature'`
+6. **Push to the branch**: `git push origin feature/amazing-feature`
+7. **Open a Pull Request**
+
+### Development Guidelines
+
+- Follow TypeScript best practices
+- Add comprehensive tests for new features
+- Update documentation for API changes
+- Ensure all linting passes before submitting
+
+## License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+## Links
+
+- **Website**: [https://1prime.io](https://1prime.io)
+- **Documentation**: [https://docs.1prime.io](https://docs.1prime.io)
+- **Discord**: [https://discord.gg/1prime](https://discord.gg/1prime)
+- **Twitter**: [@1PrimeProtocol](https://twitter.com/1PrimeProtocol)
+- **GitHub**: [https://github.com/unite-defi/1prime-protocol](https://github.com/unite-defi)
+
+## Security Notice
+
+This protocol handles cross-chain value transfers. Please:
+
+- **Audit smart contracts** before mainnet deployment
+- **Test thoroughly** on testnets before using mainnet
+- **Report security issues** responsibly to security@1prime.io
+- **Never reveal secrets** to unverified escrows
+
+---
+
+**Built with love by the 1Prime Team**
+
+_Bridging the future of cross-chain DeFi, one atomic swap at a time._
