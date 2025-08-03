@@ -1,6 +1,6 @@
 # 1Prime Protocol
 
-![1Prime Logo](packages/1prime-website/public/logo.png)
+<img width="200" alt="screenshot 1" src="./readme-logo.png" />
 
 **Secure Cross-Chain Atomic Swaps between EVM Chains and NEAR Protocol**
 
