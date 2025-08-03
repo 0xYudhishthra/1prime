@@ -1,5 +1,11 @@
 -- 1Prime Relayer Service Database Schema
 -- Run this in your Supabase SQL editor to create the necessary tables
+--
+-- SIMPLIFIED ORDER FLOW:
+-- 1. User calls /orders/prepare -> order stored in prepared_orders table
+-- 2. User signs the orderHash and calls /orders/submit with orderHash + signature
+-- 3. Relayer retrieves full order details from prepared_orders table
+-- 4. Order is processed and stored in main orders table
 
 -- Orders table for storing Fusion orders and their states
 CREATE TABLE orders (
@@ -44,6 +50,20 @@ CREATE TABLE orders (
   )
 );
 
+-- Prepared orders table for storing full order details during preparation phase
+-- This supports the simplified flow where users only need orderHash + signature to submit
+CREATE TABLE prepared_orders (
+  "orderHash" TEXT PRIMARY KEY,
+  "fusionOrder" TEXT NOT NULL, -- JSON string of the full SDK CrossChainOrder object
+  "orderDetails" TEXT NOT NULL, -- JSON string of order preparation details
+  "status" TEXT NOT NULL DEFAULT 'prepared' CHECK (status IN ('prepared', 'submitted', 'expired')),
+  "createdAt" BIGINT NOT NULL,
+  "updatedAt" BIGINT NOT NULL,
+  "expiresAt" BIGINT -- Optional expiration time for prepared orders
+  
+  -- Note: No foreign key to orders table since prepared_orders are created BEFORE orders
+);
+
 -- Resolvers table for basic resolver information
 CREATE TABLE resolvers (
   "address" TEXT PRIMARY KEY,
@@ -72,12 +92,18 @@ CREATE INDEX idx_orders_destination_escrow_deployed ON orders("destinationEscrow
 CREATE INDEX idx_orders_src_safety_deposit ON orders("srcSafetyDeposit");
 CREATE INDEX idx_orders_dst_safety_deposit ON orders("dstSafetyDeposit");
 
+-- Indexes for prepared_orders table
+CREATE INDEX idx_prepared_orders_status ON prepared_orders("status");
+CREATE INDEX idx_prepared_orders_created_at ON prepared_orders("createdAt");
+CREATE INDEX idx_prepared_orders_expires_at ON prepared_orders("expiresAt");
+
 CREATE INDEX idx_resolvers_kyc ON resolvers("isKyc");
 CREATE INDEX idx_resolvers_reputation ON resolvers("reputation");
 CREATE INDEX idx_resolvers_last_activity ON resolvers("lastActivity");
 
 -- RLS (Row Level Security) policies for secure access
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prepared_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resolvers ENABLE ROW LEVEL SECURITY;
 
 -- Policy to allow read access to orders (public information)
@@ -90,6 +116,16 @@ CREATE POLICY "Orders can be created by authenticated users" ON orders
 
 -- Policy to allow updates to orders (for status changes)
 CREATE POLICY "Orders can be updated by authenticated users" ON orders
+  FOR UPDATE USING (auth.role() = 'authenticated' OR auth.role() = 'anon');
+
+-- Policies for prepared_orders table
+CREATE POLICY "Prepared orders are viewable by everyone" ON prepared_orders
+  FOR SELECT USING (true);
+
+CREATE POLICY "Prepared orders can be created by authenticated users" ON prepared_orders
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'anon');
+
+CREATE POLICY "Prepared orders can be updated by authenticated users" ON prepared_orders
   FOR UPDATE USING (auth.role() = 'authenticated' OR auth.role() = 'anon');
 
 -- Policy to allow read access to resolvers (public KYC information)
@@ -112,6 +148,11 @@ $$ LANGUAGE plpgsql;
 -- Create triggers to automatically update the updatedAt timestamp
 CREATE TRIGGER update_orders_updated_at
   BEFORE UPDATE ON orders
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_prepared_orders_updated_at
+  BEFORE UPDATE ON prepared_orders
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
@@ -153,6 +194,23 @@ CREATE TRIGGER update_resolvers_updated_at
 CREATE VIEW active_orders AS
 SELECT * FROM orders 
 WHERE status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created')
+ORDER BY "createdAt" DESC;
+
+-- View for active prepared orders (for cleanup and monitoring)
+CREATE VIEW active_prepared_orders AS
+SELECT 
+  "orderHash",
+  "status",
+  "createdAt",
+  "updatedAt",
+  "expiresAt",
+  CASE 
+    WHEN "expiresAt" IS NOT NULL AND "expiresAt" < EXTRACT(epoch FROM now()) * 1000 
+    THEN true 
+    ELSE false 
+  END as is_expired
+FROM prepared_orders 
+WHERE status = 'prepared'
 ORDER BY "createdAt" DESC;
 
 -- View for completed orders statistics

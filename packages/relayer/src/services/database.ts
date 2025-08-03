@@ -330,5 +330,72 @@ export class DatabaseService {
       };
     }
   }
+
+  // Store prepared order with full details
+  async storePreparedOrder(
+    orderHash: string,
+    fusionOrder: any,
+    orderDetails: any
+  ): Promise<void> {
+    try {
+      const preparedOrderRecord = {
+        orderHash,
+        fusionOrder: JSON.stringify(fusionOrder), // Store the full SDK order
+        orderDetails: JSON.stringify(orderDetails), // Store order preparation details
+        status: "prepared",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const { error } = await this.supabase
+        .from("prepared_orders")
+        .insert([preparedOrderRecord]);
+
+      if (error) {
+        throw new Error(`Failed to store prepared order: ${error.message}`);
+      }
+
+      this.logger.info("Prepared order stored in database", {
+        orderHash,
+      });
+    } catch (error) {
+      this.logger.error("Failed to store prepared order", {
+        orderHash,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  // Retrieve prepared order by hash
+  async getPreparedOrder(
+    orderHash: string
+  ): Promise<{ fusionOrder: any; orderDetails: any } | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("prepared_orders")
+        .select("*")
+        .eq("orderHash", orderHash)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        throw new Error(`Failed to get prepared order: ${error.message}`);
+      }
+
+      if (!data) {
+        return null;
+      }
+
+      return {
+        fusionOrder: JSON.parse(data.fusionOrder),
+        orderDetails: JSON.parse(data.orderDetails),
+      };
+    } catch (error) {
+      this.logger.error("Failed to get prepared order", {
+        orderHash,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
 }
- 

@@ -19,12 +19,32 @@ import { EscrowVerifier } from "./escrow-verifier";
 import { SecretManager, SecretRevealConditions } from "./secret-manager";
 import { TimelockManager } from "./timelock-manager";
 import { ChainAdapterFactory } from "../adapters";
-import { isValidChainPair, getChainConfig } from "../config/chains";
+import {
+  isValidChainPair,
+  getChainConfig,
+  getEscrowFactoryAddress,
+  getChainNameFromChainId,
+} from "../config/chains";
 import { DatabaseService } from "./database";
 import { OneInchApiService } from "./1inch-api";
 import { SDKOrderMapper } from "../utils/sdk-mapper";
-import Sdk from "@1inch/cross-chain-sdk";
-import { parseUnits, randomBytes, JsonRpcProvider, Contract } from "ethers";
+import {
+  CrossChainOrder,
+  HashLock,
+  TimeLocks,
+  Address,
+  randBigInt,
+  AuctionDetails,
+  NetworkEnum,
+} from "@1inch/cross-chain-sdk";
+import {
+  parseUnits,
+  randomBytes,
+  JsonRpcProvider,
+  Contract,
+  Signer,
+  ethers,
+} from "ethers";
 import { uint8ArrayToHex, UINT_40_MAX } from "@1inch/byte-utils";
 import { JsonRpcProvider as NearJsonRpcProvider } from "@near-js/providers";
 
@@ -178,39 +198,46 @@ export class RelayerService extends EventEmitter {
         );
       }
 
-      const srcChainId = this.getChainIdNumber(params.fromChain);
-      const dstChainId = this.getChainIdNumber(params.toChain);
+      // Convert chain IDs to chain names if needed
+      let srcChainId = params.fromChain;
+      let dstChainId = params.toChain;
 
-      // Get chain configs for escrow factory addresses
-      const srcChainConfig = getChainConfig(params.fromChain);
-      const dstChainConfig = getChainConfig(params.toChain);
+      //Get the NetworkEnum from the chain id
+      const chainIdToNetwork = {
+        "11155111": NetworkEnum.ETH_SEPOLIA,
+        "397": NetworkEnum.NEAR,
+        "398": NetworkEnum.NEAR_TESTNET,
+      };
 
-      // For demo purposes, using placeholder escrow factory address
-      // You should configure this properly in your chain config
-      const escrowFactoryAddress = "0x1234567890123456789012345678901234567890"; // TODO: Configure properly
+      const srcChain = (chainIdToNetwork[
+        srcChainId as keyof typeof chainIdToNetwork
+      ] || NetworkEnum.ETHEREUM) as any;
+      const dstChain = (chainIdToNetwork[
+        dstChainId as keyof typeof chainIdToNetwork
+      ] || NetworkEnum.ETHEREUM) as any;
+
+      //Get the appropriate escrow factory address for the source chain
+      const chainName = getChainNameFromChainId(srcChainId);
+      const escrowFactoryAddress = getEscrowFactoryAddress(chainName as string);
+
+      console.log("escrowFactoryAddress", escrowFactoryAddress);
 
       // Create hash lock from the provided hash
-      const hashLock = Sdk.HashLock.forSingleFill(params.secretHash);
+      const hashLock = HashLock.fromString(params.secretHash);
 
-      // For multiple fills support, you would use:
-      // const secrets = Array.from({length: 11}).map(() => uint8ArrayToHex(randomBytes(32)));
-      // const leaves = Sdk.HashLock.getMerkleLeaves(secrets);
-      // const hashLock = Sdk.HashLock.forMultipleFills(leaves);
-
-      // Create the CrossChainOrder using SDK
-      const order = Sdk.CrossChainOrder.new(
-        new Sdk.Address(escrowFactoryAddress),
+      const order = CrossChainOrder.new(
+        new Address(escrowFactoryAddress),
         {
-          salt: Sdk.randBigInt(1000n),
-          maker: new Sdk.Address(params.userAddress),
+          salt: randBigInt(1000n),
+          maker: params.userAddress,
           makingAmount: parseUnits(params.amount, 18), // Adjust decimals as needed
           takingAmount: parseUnits(params.amount, 18), // You may want to calculate exchange rate
-          makerAsset: new Sdk.Address(params.fromToken),
-          takerAsset: new Sdk.Address(params.toToken),
+          makerAsset: new Address(params.fromToken),
+          takerAsset: new Address(params.toToken),
         },
         {
           hashLock,
-          timeLocks: Sdk.TimeLocks.new({
+          timeLocks: TimeLocks.new({
             srcWithdrawal: 300n, // 5 minutes finality lock
             srcPublicWithdrawal: 600n, // 10 minutes private withdrawal
             srcCancellation: 1800n, // 30 minutes cancellation
@@ -219,45 +246,77 @@ export class RelayerService extends EventEmitter {
             dstPublicWithdrawal: 600n, // 10 minutes private withdrawal
             dstCancellation: 1800n, // 30 minutes cancellation
           }),
-          srcChainId: BigInt(srcChainId),
-          dstChainId: BigInt(dstChainId),
+          srcChainId: srcChain,
+          dstChainId: dstChain,
           srcSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
           dstSafetyDeposit: parseUnits("0.001", 18), // Small safety deposit
         },
         {
-          auction: new Sdk.AuctionDetails({
+          auction: new AuctionDetails({
             initialRateBump: 1000, // 10% initial rate bump
             points: [], // Custom auction curve points (empty for default)
             duration: 120n, // 2 minutes auction duration
             startTime: BigInt(Math.floor(Date.now() / 1000)), // Current timestamp
           }),
-          whitelist: [], // No whitelist - open to all resolvers
+          whitelist: [
+            {
+              address: new Address(escrowFactoryAddress),
+              allowFrom: 0n,
+            },
+          ],
           resolvingStartTime: 0n, // Immediate resolving
         },
         {
-          nonce: Sdk.randBigInt(UINT_40_MAX),
+          nonce: randBigInt(UINT_40_MAX),
           allowPartialFills: false, // Single fill for now
           allowMultipleFills: false, // Single fill for now
         }
       );
 
+      console.log("order", order);
+
       // Generate order hash using SDK
-      const orderHash = order.getOrderHash(srcChainId);
+      const orderHash = order.getOrderHash(Number(srcChainId));
 
       this.logger.info("Fusion order generated using SDK", {
         orderHash,
         userAddress: params.userAddress,
         fromChain: params.fromChain,
         toChain: params.toChain,
+        srcChainName: this.getChainNameFromId(Number(srcChainId)),
+        dstChainName: this.getChainNameFromId(Number(dstChainId)),
         srcChainId,
         dstChainId,
         makingAmount: order.makingAmount.toString(),
         takingAmount: order.takingAmount.toString(),
       });
 
+      // Store the prepared order in database with full details
+      const orderDetails = {
+        userAddress: params.userAddress,
+        amount: params.amount,
+        fromToken: params.fromToken,
+        toToken: params.toToken,
+        fromChain: params.fromChain,
+        toChain: params.toChain,
+        secretHash: params.secretHash,
+        srcChainId,
+        dstChainId,
+      };
+
+      await this.database.storePreparedOrder(orderHash, order, orderDetails);
+
+      this.logger.info("Order prepared and stored", {
+        orderHash,
+        userAddress: params.userAddress,
+      });
+
+      // Only return orderHash - full order details are stored in DB
       return {
         orderHash,
-        fusionOrder: order, // Return the SDK order object
+        success: true,
+        message:
+          "Order prepared successfully. Use this orderHash with your signature to submit.",
       };
     } catch (error) {
       this.logger.error("Failed to create fusion order", {
@@ -266,6 +325,28 @@ export class RelayerService extends EventEmitter {
       });
       throw error;
     }
+  }
+
+  public async signOrder(
+    srcChainId: number,
+    order: CrossChainOrder
+  ): Promise<string> {
+    const typedData = order.getTypedData(srcChainId);
+
+    let signer: Signer;
+
+    //use this form the ENV EVM_PRIVATE_KEY
+    const privateKey = process.env.EVM_PRIVATE_KEY;
+    if (!privateKey) {
+      throw new Error("EVM_PRIVATE_KEY is not set");
+    }
+    signer = new ethers.Wallet(privateKey);
+
+    return signer.signTypedData(
+      typedData.domain,
+      { Order: typedData.types[typedData.primaryType] },
+      typedData.message
+    );
   }
 
   /**
@@ -421,6 +502,41 @@ export class RelayerService extends EventEmitter {
       return orderStatus;
     } catch (error) {
       this.logger.error("Failed to submit signed order", {
+        error: (error as Error).message,
+        orderHash,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Simplified submit signed order - only requires orderHash + signature
+   * Retrieves full order details from database
+   */
+  async submitSignedOrderSimplified(
+    orderHash: string,
+    signature: string
+  ): Promise<OrderStatus> {
+    try {
+      this.validateInitialized();
+
+      // Retrieve the prepared order from database
+      const preparedOrder = await this.database.getPreparedOrder(orderHash);
+      if (!preparedOrder) {
+        throw new Error(`Prepared order not found for hash: ${orderHash}`);
+      }
+
+      const { fusionOrder: signedOrder, orderDetails } = preparedOrder;
+
+      this.logger.info("Retrieved prepared order for submission", {
+        orderHash,
+        userAddress: orderDetails.userAddress,
+      });
+
+      // Use the existing submitSignedOrder logic with retrieved data
+      return await this.submitSignedOrder(orderHash, signedOrder, signature);
+    } catch (error) {
+      this.logger.error("Failed to submit signed order (simplified)", {
         error: (error as Error).message,
         orderHash,
       });

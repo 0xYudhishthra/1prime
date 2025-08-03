@@ -5,11 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "patch-package && node --input-type=module -e \"(async () => { try { const { NetworkEnum } = await import('@1inch/fusion-sdk'); console.log('✅ NEAR networks verification:'); console.log('NEAR:', NetworkEnum.NEAR ? '✅ Available (397)' : '❌ Missing'); console.log('NEAR_TESTNET:', NetworkEnum.NEAR_TESTNET ? '✅ Available (398)' : '❌ Missing'); } catch(e) { console.log('❌ Error checking NEAR networks:', e.message); } })()\"",
     "dev:relayer": "pnpm --filter @1prime/relayer dev",
     "build:relayer": "pnpm --filter @1prime/relayer build",
     "test:relayer": "pnpm --filter @1prime/relayer test",
     "start:relayer": "pnpm --filter @1prime/relayer start",
+    "build:cross-chain-sdk": "pnpm --filter @1inch/cross-chain-sdk build",
     "build:all": "pnpm -r build",
     "test:all": "pnpm -r test",
     "lint:all": "pnpm -r lint",
@@ -30,12 +30,12 @@
   "author": "1Prime",
   "license": "MIT",
   "packageManager": "pnpm@8.15.0",
-  "dependencies": {
-    "@1inch/byte-utils": "3.1.0",
-    "@1inch/cross-chain-sdk": "0.1.15",
-    "@1inch/fusion-sdk": "2.3.6"
-  },
   "devDependencies": {
-    "@milahu/patch-package": "6.4.14"
+    "nodemon": "3.1.10"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@1inch/fusion-sdk@2.1.11-rc.2": "patches/@1inch__fusion-sdk@2.1.11-rc.2.patch"
+    }
   }
 }

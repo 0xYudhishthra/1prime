@@ -325,6 +325,9 @@ describe('Resolving example', () => {
             )
 
             const signature = await srcChainUser.signOrder(srcChainId, order)
+            const order2 = JSON.parse(JSON.stringify(order))
+            const signature2 = await srcChainUser.signOrder(srcChainId, order2)
+
             const orderHash = order.getOrderHash(srcChainId)
             // Resolver fills order
             const resolverContract = new Resolver(src.resolver, dst.resolver)
