@@ -18,7 +18,7 @@ export function createAuth(env: CloudflareBindings) {
       enabled: true,
       autoSignIn: true,
       maxPasswordLength: 10,
-      minPasswordLength: 6,
+      minPasswordLength: 3,
     },
     plugins: [bearer()],
     secret: env.BETTER_AUTH_SECRET,
