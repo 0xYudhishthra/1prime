@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: {
             Authorization: `Bearer ${storedToken}`,
           },
-        }
+        },
       );
 
       if (response.ok) {
