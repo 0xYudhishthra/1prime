@@ -284,7 +284,7 @@ function DepositPageContent() {
                 </p>
               </div>
               <a
-                href="https://www.icloud.com/shortcuts/da738cbcaccb4fa9aebd063c5bdabdc2"
+                href="https://www.icloud.com/shortcuts/3912a4b990e64b728d940b264b393d6a"
                 target="_blank"
                 rel="noopener noreferrer"
               >
