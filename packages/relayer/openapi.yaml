@@ -123,7 +123,8 @@ paths:
                     destinationChain: "near-testnet"
                     sourceAmount: "10000000"
                     destinationAmount: "10000000"
-                    phase: "submitted"
+                    phase: "claimed"
+                    assignedResolver: "0xdef456789abcdef123456789abcdef123456789a"
                 timestamp: 1640995200000
         "500":
           $ref: "#/components/responses/InternalError"
@@ -149,12 +150,13 @@ paths:
             schema:
               $ref: "#/components/schemas/GenerateOrderRequest"
             example:
-              userAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+              userSrcAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+              userDstAddress: "papasins.near"
               amount: "10000000"
-              fromToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-              toToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-              fromChain: "ethereum"
-              toChain: "near-testnet"
+              fromToken: "usdc"
+              toToken: "usdc"
+              fromChain: "11155111"
+              toChain: "398"
               secretHash: "0xa82aec019867b7307551dc397acde18b541e742fa1a4e53df4ce3b02d462f524"
       responses:
         "200":
@@ -206,6 +208,7 @@ paths:
                 data:
                   orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   phase: "submitted"
+                  assignedResolver: null
                   sourceEscrow: null
                   destinationEscrow: null
 
@@ -222,9 +225,10 @@ paths:
                     - type: "order_created"
                       timestamp: 1640995200000
                       data:
-                        userAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
-                        sourceChain: "ethereum"
-                        destinationChain: "near-testnet"
+                        userSrcAddress: "0xeb0d8736Cc2c47882f112507cc8A3355d37D2413"
+                        userDstAddress: "papasins.near"
+                        sourceChain: "11155111"
+                        destinationChain: "398"
                 timestamp: 1640995200000
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -259,16 +263,19 @@ paths:
                 data:
                   orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                   phase: "src_escrow_deployed"
+                  assignedResolver: "0xdef456789abcdef123456789abcdef123456789a"
                   sourceEscrow:
                     orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                     chain: "ethereum"
                     contractAddress: "0x128ce802AB730FbB360b784CA8C16dD73147649c"
+                    designated: "0xdef456789abcdef123456789abcdef123456789a"
                     amount: "10000000"
                     isCreated: true
                   destinationEscrow:
                     orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
                     chain: "near-testnet"
                     contractAddress: "escrow-dst-template.testnet"
+                    designated: "0xdef456789abcdef123456789abcdef123456789a"
                     amount: "10000000"
                     isCreated: true
 
@@ -370,8 +377,8 @@ paths:
       description: |
         Claim an order for resolver processing (Step 7 of the cross-chain flow).
 
-        Only registered resolvers can claim orders. This transitions the order
-        to "claimed" phase and assigns it to the resolver.
+        Any resolver can claim unclaimed orders. This transitions the order
+        to "claimed" phase and assigns it to the resolver address.
       operationId: claimOrder
       tags:
         - Resolvers
@@ -417,7 +424,7 @@ paths:
       description: |
         Confirm that an escrow has been deployed (Steps 7.1 & 9.1 of the cross-chain flow).
 
-        Resolvers call this endpoint after deploying source or destination escrows
+        The assigned resolver calls this endpoint after deploying source or destination escrows
         to update the order state and provide deployment details.
       operationId: confirmEscrowDeployment
       tags:
@@ -585,7 +592,8 @@ components:
     GenerateOrderRequest:
       type: object
       required:
-        - userAddress
+        - userSrcAddress
+        - userDstAddress
         - amount
         - fromToken
         - toToken
@@ -593,10 +601,12 @@ components:
         - toChain
         - secretHash
       properties:
-        userAddress:
+        userSrcAddress:
           type: string
-          pattern: "^0x[a-fA-F0-9]{40}$"
-          description: Maker's address
+          description: User's address on the source chain (can be EVM hex or NEAR account)
+        userDstAddress:
+          type: string
+          description: User's address on the destination chain (can be EVM hex or NEAR account)
         amount:
           type: string
           description: Amount to swap from source chain (in wei/smallest unit)
@@ -608,14 +618,12 @@ components:
           description: Destination token symbol or address
         fromChain:
           type: string
-          description: Source blockchain name (e.g., "ethereum", "base", "bsc", "polygon", "arbitrum")
-          enum: ["ethereum", "base", "bsc", "polygon", "arbitrum"]
-          example: "ethereum"
+          description: Source blockchain chain ID or name (e.g., "11155111", "ethereum", "base", "bsc", "polygon", "arbitrum")
+          example: "11155111"
         toChain:
           type: string
-          description: Destination blockchain name (e.g., "near", "near-testnet")
-          enum: ["near", "near-testnet"]
-          example: "near-testnet"
+          description: Destination blockchain chain ID or name (e.g., "398", "near", "near-testnet")
+          example: "398"
         secretHash:
           type: string
           description: Secret hash for the order
@@ -793,7 +801,7 @@ tags:
   - name: Orders
     description: Cross-chain swap order management
   - name: Resolvers
-    description: Resolver operations and escrow management
+    description: Resolver order claiming and escrow deployment
   - name: Security
     description: Escrow verification and secure secret management
   - name: WebSocket
