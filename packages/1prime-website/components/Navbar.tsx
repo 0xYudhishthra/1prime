@@ -55,16 +55,16 @@ export function Navbar() {
                 </Button>
               </Link>
 
-              <Link href="/deposit">
+              {/* <Link href="/deposit">
                 <Button variant="outline" size="sm">
                   Deposit
                 </Button>
-              </Link>
+              </Link> */}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
-                    <User className="mr-2 h-4 w-4" />
+                    <User className="mr-1 h-4 w-4" />
                     Account
                   </Button>
                 </DropdownMenuTrigger>
