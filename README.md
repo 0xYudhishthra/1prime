@@ -189,6 +189,7 @@ NEXT_PUBLIC_CHAIN_ENV=testnet
 
 - [**Relayer REST API**](./packages/relayer/openapi.yaml) - Complete OpenAPI specification
 - [**WebSocket Events**](./packages/relayer/docs/websocket.md) - Real-time update documentation
+- [**Apple Shortcuts API**](./packages/shortcut-auth/openapi.yaml) - iOS Shortcuts integration
 
 ## Supported Networks
 
