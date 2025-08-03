@@ -18,7 +18,6 @@ import {
     Details,
     EscrowParams,
     Extra,
-    CrossChainAddress,
     EvmAddress,
     NearAddress,
     isNearAddress,
@@ -41,28 +40,11 @@ function parseAddress(addressString: string): Address {
 }
 
 /**
- * Utility function to create CrossChainAddress from string
- * For EVM addresses, creates an Address instance
- * For NEAR addresses, returns the string as-is
- */
-function createCrossChainAddress(addressString: string): CrossChainAddress {
-    // Check if it's a NEAR address format
-    if (
-        addressString.includes('.') ||
-        (addressString.length === 64 && /^[0-9a-fA-F]+$/.test(addressString))
-    ) {
-        return addressString as NearAddress
-    }
-    // Default to EVM address
-    return new Address(addressString)
-}
-
-/**
  * Utility function to convert CrossChainAddress to Address for fusion-sdk compatibility
  * For NEAR addresses, creates an Address instance from the string
  * For EVM addresses, returns as-is
  */
-function toAddress(address: CrossChainAddress): Address {
+function toAddress(address: Address): Address {
     if (isNearAddress(address)) {
         // For NEAR addresses, we'll encode them as hex strings for Address compatibility
         // This may need adjustment based on how NEAR addresses should be handled in contracts
@@ -74,7 +56,7 @@ function toAddress(address: CrossChainAddress): Address {
 /**
  * Utility function to convert CrossChainAddress to string representation
  */
-function addressToString(address: CrossChainAddress): string {
+function addressToString(address: Address): string {
     if (isNearAddress(address)) {
         return address
     }
@@ -104,15 +86,15 @@ export class CrossChainOrder {
         return this.inner.extension
     }
 
-    get maker(): CrossChainAddress {
+    get maker(): Address {
         return this.inner.maker
     }
 
-    get takerAsset(): CrossChainAddress {
+    get takerAsset(): Address {
         return this.inner.escrowExtension.dstToken
     }
 
-    get makerAsset(): CrossChainAddress {
+    get makerAsset(): Address {
         return this.inner.makerAsset
     }
 
@@ -132,7 +114,7 @@ export class CrossChainOrder {
      * If zero address, then maker will receive funds
      * Supports both EVM and NEAR address formats
      */
-    get receiver(): CrossChainAddress {
+    get receiver(): Address {
         return this.inner.receiver
     }
 
@@ -185,7 +167,7 @@ export class CrossChainOrder {
             whitelist: details.whitelist,
             resolvingStartTime: details.resolvingStartTime ?? now(),
             customReceiver: orderInfo.receiver
-                ? toAddress(orderInfo.receiver) // Convert NEAR or use EVM Address
+                ? orderInfo.receiver // Convert NEAR or use EVM Address
                 : undefined
         })
 
@@ -195,13 +177,13 @@ export class CrossChainOrder {
             postInteractionData,
             extra?.permit
                 ? new Interaction(
-                      toAddress(orderInfo.makerAsset), // Convert NEAR or use EVM Address
+                      orderInfo.makerAsset, // Convert NEAR or use EVM Address
                       extra.permit
                   )
                 : undefined,
             escrowParams.hashLock,
             escrowParams.dstChainId,
-            toAddress(orderInfo.takerAsset), // Convert NEAR or use EVM Address
+            orderInfo.takerAsset, // Convert NEAR or use EVM Address
             escrowParams.srcSafetyDeposit,
             escrowParams.dstSafetyDeposit,
             escrowParams.timeLocks
@@ -234,6 +216,65 @@ export class CrossChainOrder {
                 receiver: orderInfo.receiver
                     ? toAddress(orderInfo.receiver) // Convert NEAR or use EVM Address
                     : undefined
+            },
+            extra
+        )
+    }
+
+    /**
+     * Create a new CrossChainOrder for NEAR, but is a bit more lax with types.
+     * @param orderInfo
+     * @param escrowParams
+     * @param details
+     * @param extra
+     * @returns
+     */
+    public static new_near(
+        orderInfo: CrossChainOrderInfo,
+        escrowParams: EscrowParams,
+        details: Details,
+        extra?: Extra
+    ): CrossChainOrder {
+        let postInteractionData: SettlementPostInteractionData | undefined
+
+        const ext = new EscrowExtension(
+            Address.ZERO_ADDRESS,
+            details.auction,
+            postInteractionData as SettlementPostInteractionData,
+            undefined,
+            escrowParams.hashLock,
+            escrowParams.dstChainId,
+            orderInfo.takerAsset, // Convert NEAR or use EVM Address
+            escrowParams.srcSafetyDeposit,
+            escrowParams.dstSafetyDeposit,
+            escrowParams.timeLocks
+        )
+
+        assert(
+            isSupportedChain(escrowParams.srcChainId),
+            `Not supported chain ${escrowParams.srcChainId}`
+        )
+
+        assert(
+            isSupportedChain(escrowParams.dstChainId),
+            `Not supported chain ${escrowParams.dstChainId}`
+        )
+
+        assert(
+            escrowParams.srcChainId !== escrowParams.dstChainId,
+            'Chains must be different'
+        )
+
+        return new CrossChainOrder(
+            ext,
+            {
+                makerAsset: Address.ZERO_ADDRESS,
+                takerAsset: toAddress(orderInfo.takerAsset), // TARGET ASSET ON EVM
+                makingAmount: orderInfo.makingAmount,
+                takingAmount: orderInfo.takingAmount,
+                maker: Address.ZERO_ADDRESS, // Convert NEAR or use EVM Address
+                salt: orderInfo.salt,
+                receiver: toAddress(orderInfo.receiver ?? Address.ZERO_ADDRESS)
             },
             extra
         )
@@ -321,10 +362,7 @@ export class CrossChainOrder {
      * @param executor address of executor (EVM or NEAR format)
      * @param executionTime timestamp in sec at which order planning to execute
      */
-    public canExecuteAt(
-        executor: CrossChainAddress,
-        executionTime: bigint
-    ): boolean {
+    public canExecuteAt(executor: Address, executionTime: bigint): boolean {
         // Convert CrossChainAddress to Address for inner method if needed
         const addressParam = isEvmAddress(executor)
             ? executor
@@ -357,7 +395,7 @@ export class CrossChainOrder {
      * Check if `wallet` can fill order before other
      * Supports both EVM and NEAR address formats
      */
-    public isExclusiveResolver(wallet: CrossChainAddress): boolean {
+    public isExclusiveResolver(wallet: Address): boolean {
         // Convert CrossChainAddress to Address for inner method if needed
         const addressParam = isEvmAddress(wallet)
             ? wallet
@@ -382,7 +420,7 @@ export class CrossChainOrder {
      */
     public toSrcImmutables(
         srcChainId: SupportedChain,
-        taker: CrossChainAddress,
+        taker: Address,
         amount: bigint,
         hashLock = this.escrowExtension.hashLockInfo
     ): Immutables {
