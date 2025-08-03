@@ -47,7 +47,7 @@
 
 The following diagram illustrates the complete flow of a cross-chain atomic swap:
 
-![Cross-Chain Swap Flow](./assets/cross-chain-flow.png)
+![Cross-Chain Swap Flow](https://github.com/user-attachments/assets/730524d9-4b4d-4429-afcb-004c997551a9)
 
 ### Detailed Flow Explanation
 
