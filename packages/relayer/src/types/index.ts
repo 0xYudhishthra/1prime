@@ -31,9 +31,6 @@ export interface FusionOrder {
   signature: string;
   nonce: string;
   createdAt: number;
-  // Dynamic HTLC contract addresses (set by resolver during Phase 2)
-  sourceChainHtlcAddress?: string;
-  destinationChainHtlcAddress?: string;
 }
 
 export interface DutchAuctionState {

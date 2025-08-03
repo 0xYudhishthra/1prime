@@ -24,9 +24,6 @@ CREATE TABLE orders (
   "initialRateBump" INTEGER NOT NULL,
   "signature" TEXT NOT NULL,
   "nonce" TEXT NOT NULL,
-  -- Dynamic HTLC contract addresses (set by resolver during Phase 2)
-  "sourceChainHtlcAddress" TEXT,
-  "destinationChainHtlcAddress" TEXT,
   "createdAt" BIGINT NOT NULL,
   "status" TEXT NOT NULL CHECK (status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created', 'completed', 'cancelled', 'expired')),
   "updatedAt" BIGINT NOT NULL,
@@ -82,9 +79,6 @@ CREATE INDEX idx_orders_destination_chain ON orders("destinationChain");
 CREATE INDEX idx_orders_created_at ON orders("createdAt");
 CREATE INDEX idx_orders_timeout ON orders("timeout");
 CREATE INDEX idx_orders_auction_start ON orders("auctionStartTime");
--- Indexes for dynamic HTLC contract addresses (for tracking per-swap contracts)
-CREATE INDEX idx_orders_source_htlc ON orders("sourceChainHtlcAddress");
-CREATE INDEX idx_orders_destination_htlc ON orders("destinationChainHtlcAddress");
 
 -- Indexes for SDK-extracted fields (for enhanced timelock and safety deposit tracking)
 CREATE INDEX idx_orders_source_escrow_deployed ON orders("sourceEscrowDeployedAt");
@@ -167,12 +161,12 @@ CREATE TRIGGER update_resolvers_updated_at
 -- ('0x742d35Cc6635C0532925a3b8D4A8f4c3c8a54a0b', true, 95, EXTRACT(epoch FROM now()) * 1000),
 -- ('0x8ba1f109551bD432803012645Hac136c69d80Ba9', true, 98, EXTRACT(epoch FROM now()) * 1000);
 
--- Sample order (HTLC addresses start as NULL, populated by resolver during Phase 2)
+-- Sample order
 -- INSERT INTO orders (
 --   "orderHash", "maker", "sourceChain", "destinationChain", 
 --   "sourceToken", "destinationToken", "sourceAmount", "destinationAmount",
 --   "secretHash", "timeout", "auctionStartTime", "auctionDuration", 
---   "initialRateBump", "signature", "nonce", "createdAt", "updatedAt"
+--   "initialRateBump", "signature", "nonce", "createdAt", "status", "updatedAt"
 -- ) VALUES (
 --   '0x1234567890abcdef...', '0x1234567890abcdef1234567890abcdef12345678',
 --   'ethereum', 'near', '0x0000000000000000000000000000000000000000',
@@ -180,15 +174,8 @@ CREATE TRIGGER update_resolvers_updated_at
 --   '0xabcdef1234567890...', EXTRACT(epoch FROM now() + interval '1 hour') * 1000,
 --   EXTRACT(epoch FROM now()) * 1000, 120000, 1000,
 --   '0xsignature...', 'nonce123', EXTRACT(epoch FROM now()) * 1000,
---   EXTRACT(epoch FROM now()) * 1000
+--   'pending', EXTRACT(epoch FROM now()) * 1000
 -- );
-
--- To update HTLC addresses during Phase 2 (when resolver deploys contracts):
--- UPDATE orders 
--- SET "sourceChainHtlcAddress" = '0x...', 
---     "destinationChainHtlcAddress" = 'htlc.contract.near',
---     "updatedAt" = EXTRACT(epoch FROM now()) * 1000
--- WHERE "orderHash" = '0x1234567890abcdef...';
 
 -- View for active orders (convenience)
 CREATE VIEW active_orders AS

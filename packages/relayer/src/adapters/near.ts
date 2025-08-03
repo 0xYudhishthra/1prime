@@ -143,41 +143,23 @@ export class NEARChainAdapter extends BaseChainAdapter {
         throw new Error(`Invalid amount: ${order.sourceAmount}`);
       }
 
-      // HTLC contract address should be provided in the order
-      let htlcContractAddress: string;
-      if (this.config.chainId === order.sourceChain) {
-        htlcContractAddress = order.sourceChainHtlcAddress || "";
-      } else {
-        htlcContractAddress = order.destinationChainHtlcAddress || "";
-      }
-
-      if (!htlcContractAddress) {
-        throw new Error(
-          `HTLC contract address not set for chain ${this.config.chainId}`
-        );
-      }
-
-      const outcome = await this.account.functionCall({
-        contractId: htlcContractAddress,
-        methodName: "create_htlc",
-        args: {
-          secret_hash: order.secretHash,
-          timeout: order.timeout.toString(),
-          designated_relayer: resolver,
-          order_hash: order.orderHash,
-        },
-        attachedDeposit: amount,
-        gas: this.config.gasLimit.htlcCreation.toString(),
+      // Skip escrow creation - not using HTLC contracts
+      this.logger.info("Skipping escrow creation - HTLC contracts not used", {
+        orderHash: order.orderHash,
+        chain: this.config.chainId,
+        resolver,
       });
 
-      const transactionHash = outcome.transaction.hash;
+      // Return order hash as transaction reference for simplified flow
+      const txReference = `skip_${order.orderHash}_near`;
 
       this.logOperation(
         "createEscrow",
-        { orderHash: order.orderHash, resolver },
-        transactionHash
+        { orderHash: order.orderHash, resolver, status: "skipped" },
+        txReference
       );
-      return transactionHash;
+
+      return txReference;
     } catch (error) {
       this.logOperation(
         "createEscrow",

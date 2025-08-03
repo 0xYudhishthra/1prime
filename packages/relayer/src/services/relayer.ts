@@ -411,6 +411,189 @@ export class RelayerService extends EventEmitter {
   }
 
   /**
+   * Transform complex SDK order object to flat FusionOrderExtended structure
+   */
+  private transformSDKOrderToFusionOrder(
+    sdkOrder: any,
+    orderHash: string,
+    orderDetails: any,
+    signature: string
+  ): FusionOrderExtended {
+    // Extract data from nested SDK structure
+    const innerOrder = sdkOrder.inner?.inner;
+    const fusionExtension = sdkOrder.inner?.fusionExtension;
+    const escrowExtension = sdkOrder.inner?.escrowExtension;
+
+    if (!innerOrder) {
+      throw new Error("Invalid SDK order structure: missing inner.inner data");
+    }
+
+    // Map chain IDs to chain names
+    const sourceChain = this.getChainNameFromId(
+      Number(orderDetails.srcChainId)
+    );
+    const destinationChain = this.getChainNameFromId(
+      Number(orderDetails.dstChainId)
+    );
+
+    return {
+      // Basic order fields
+      orderHash,
+      maker: innerOrder.maker?.val || orderDetails.userAddress,
+      sourceChain,
+      destinationChain,
+      sourceToken: innerOrder.makerAsset?.val || orderDetails.fromToken,
+      destinationToken: innerOrder.takerAsset?.val || orderDetails.toToken,
+      sourceAmount: innerOrder.makingAmount || orderDetails.amount,
+      destinationAmount: innerOrder.takingAmount || orderDetails.amount,
+      secretHash:
+        fusionExtension?.hashLockInfo?.value || orderDetails.secretHash,
+      timeout: Date.now() + 3600000, // 1 hour from now
+      auctionStartTime:
+        Number(
+          fusionExtension?.auctionDetails?.startTime || Date.now() / 1000
+        ) * 1000, // Convert from seconds to milliseconds
+      auctionDuration: Math.max(
+        30000,
+        Math.min(
+          300000,
+          Number(fusionExtension?.auctionDetails?.duration || 120) * 1000
+        )
+      ), // Convert seconds to milliseconds and ensure 30s-5min range
+      initialRateBump: 0, // Hardcoded to 0 - no dutch auction for now
+      signature,
+      nonce: innerOrder._salt || "",
+      createdAt: Date.now(),
+
+      // SDK-specific fields
+      receiver: innerOrder.receiver?.val,
+      srcSafetyDeposit: fusionExtension?.srcSafetyDeposit,
+      dstSafetyDeposit: fusionExtension?.dstSafetyDeposit,
+      allowPartialFills: false, // Default
+      allowMultipleFills: false, // Default
+
+      // Extract timelock values from SDK order
+      detailedTimeLocks: this.extractTimeLocks(fusionExtension),
+      // Simplified auction details - hardcoded price, no dutch auction
+      enhancedAuctionDetails: {
+        points: [], // Empty - no price curve
+      },
+
+      // Order state management
+      phase: "submitted",
+    };
+  }
+
+  /**
+   * Extract timelock values from SDK fusionExtension
+   */
+  private extractTimeLocks(fusionExtension: any): any {
+    // First, try to find parsed timelock values in the extension
+    if (fusionExtension?.parsedTimeLocks) {
+      return fusionExtension.parsedTimeLocks;
+    }
+
+    // If there's a timeLocks object with individual properties
+    if (
+      fusionExtension?.timeLocks &&
+      typeof fusionExtension.timeLocks === "object" &&
+      !fusionExtension.timeLocks.startsWith?.("0x")
+    ) {
+      return {
+        srcWithdrawal: Number(fusionExtension.timeLocks.srcWithdrawal || 300),
+        srcPublicWithdrawal: Number(
+          fusionExtension.timeLocks.srcPublicWithdrawal || 600
+        ),
+        srcCancellation: Number(
+          fusionExtension.timeLocks.srcCancellation || 1800
+        ),
+        srcPublicCancellation: Number(
+          fusionExtension.timeLocks.srcPublicCancellation || 3600
+        ),
+        dstWithdrawal: Number(fusionExtension.timeLocks.dstWithdrawal || 300),
+        dstPublicWithdrawal: Number(
+          fusionExtension.timeLocks.dstPublicWithdrawal || 600
+        ),
+        dstCancellation: Number(
+          fusionExtension.timeLocks.dstCancellation || 1800
+        ),
+      };
+    }
+
+    // If it's a hex string, parse it
+    if (
+      fusionExtension?.timeLocks &&
+      typeof fusionExtension.timeLocks === "string" &&
+      fusionExtension.timeLocks.startsWith("0x")
+    ) {
+      return this.parseTimeLockHex(fusionExtension.timeLocks);
+    }
+
+    // Fallback to reasonable defaults
+    return {
+      srcWithdrawal: 300, // 5 minutes
+      srcPublicWithdrawal: 600, // 10 minutes
+      srcCancellation: 1800, // 30 minutes
+      srcPublicCancellation: 3600, // 1 hour
+      dstWithdrawal: 300, // 5 minutes
+      dstPublicWithdrawal: 600, // 10 minutes
+      dstCancellation: 1800, // 30 minutes
+    };
+  }
+
+  /**
+   * Parse timelock hex string into individual values
+   * The hex string contains packed timelock values
+   */
+  private parseTimeLockHex(timeLockHex: string): any {
+    try {
+      // Remove 0x prefix
+      const hex = timeLockHex.slice(2);
+
+      // The hex string contains packed timelock values
+      // Each timelock is typically 4 bytes (8 hex chars)
+      // Format might be: srcWithdrawal(4) + srcPublicWithdrawal(4) + srcCancellation(4) + srcPublicCancellation(4) + dstWithdrawal(4) + dstPublicWithdrawal(4) + dstCancellation(4)
+
+      if (hex.length >= 56) {
+        // 7 * 8 = 56 hex chars for 7 values
+        const srcWithdrawal = parseInt(hex.slice(0, 8), 16);
+        const srcPublicWithdrawal = parseInt(hex.slice(8, 16), 16);
+        const srcCancellation = parseInt(hex.slice(16, 24), 16);
+        const srcPublicCancellation = parseInt(hex.slice(24, 32), 16);
+        const dstWithdrawal = parseInt(hex.slice(32, 40), 16);
+        const dstPublicWithdrawal = parseInt(hex.slice(40, 48), 16);
+        const dstCancellation = parseInt(hex.slice(48, 56), 16);
+
+        return {
+          srcWithdrawal,
+          srcPublicWithdrawal,
+          srcCancellation,
+          srcPublicCancellation,
+          dstWithdrawal,
+          dstPublicWithdrawal,
+          dstCancellation,
+        };
+      }
+    } catch (error) {
+      this.logger.warn("Failed to parse timelock hex, using defaults", {
+        timeLockHex,
+        error: (error as Error).message,
+      });
+    }
+
+    // Fallback to defaults if parsing fails
+    return {
+      srcWithdrawal: 300,
+      srcPublicWithdrawal: 600,
+      srcCancellation: 1800,
+      srcPublicCancellation: 3600,
+      dstWithdrawal: 300,
+      dstPublicWithdrawal: 600,
+      dstCancellation: 1800,
+    };
+  }
+
+  /**
    * Submit signed order and start relayer processing (Step 6)
    * Simplified: takes only orderHash and signature, retrieves order from database
    */
@@ -428,23 +611,21 @@ export class RelayerService extends EventEmitter {
         throw new Error(`Prepared order not found for hash: ${orderHash}`);
       }
 
-      const { fusionOrder, orderDetails } = preparedOrder;
-
-      console.log("preparedOrder", fusionOrder);
-      console.log("orderDetails", orderDetails);
+      const { fusionOrder: sdkOrder, orderDetails } = preparedOrder;
 
       this.logger.info("Retrieved prepared order for submission", {
         orderHash,
         userAddress: orderDetails.userAddress,
       });
 
-      // Update the order with signature and submission details
-      const completedOrder: FusionOrderExtended = {
-        ...fusionOrder,
-        signature,
-        phase: "submitted", // Order is submitted and waiting for resolver to claim it
-        createdAt: Date.now(),
-      };
+      // Transform SDK object to FusionOrderExtended
+      const completedOrder: FusionOrderExtended =
+        this.transformSDKOrderToFusionOrder(
+          sdkOrder,
+          orderHash,
+          orderDetails,
+          signature
+        );
 
       // Store in database
       await this.databaseService.storeSignedOrder(completedOrder);

@@ -63,8 +63,6 @@ export class OrderManager extends EventEmitter {
         signature: fusionOrder.signature,
         nonce: fusionOrder.nonce,
         createdAt: fusionOrder.createdAt,
-        sourceChainHtlcAddress: fusionOrder.sourceChainHtlcAddress,
-        destinationChainHtlcAddress: fusionOrder.destinationChainHtlcAddress,
       };
       this.orders.set(fusionOrder.orderHash, baseFusionOrder);
 

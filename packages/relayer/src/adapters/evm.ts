@@ -169,37 +169,23 @@ export class EVMChainAdapter extends BaseChainAdapter {
         throw new Error(`Invalid resolver address: ${resolver}`);
       }
 
-      // HTLC contract address should be provided in the order
-      let htlcContractAddress: string;
-      if (this.config.chainId === order.sourceChain) {
-        htlcContractAddress = order.sourceChainHtlcAddress || "";
-      } else {
-        htlcContractAddress = order.destinationChainHtlcAddress || "";
-      }
-
-      if (!htlcContractAddress) {
-        throw new Error(
-          `HTLC contract address not set for chain ${this.config.chainId}`
-        );
-      }
-
-      const htlcContract = this.getHTLCContract(htlcContractAddress);
-      const tx = await htlcContract.createHTLC(
-        order.secretHash,
-        order.timeout,
+      // Skip escrow creation - not using HTLC contracts
+      this.logger.info("Skipping escrow creation - HTLC contracts not used", {
+        orderHash: order.orderHash,
+        chain: this.config.chainId,
         resolver,
-        order.orderHash,
-        { value: ethers.parseEther(order.sourceAmount) }
-      );
+      });
 
-      const receipt = await tx.wait();
+      // Return order hash as transaction reference for simplified flow
+      const txReference = `skip_${order.orderHash}`;
 
       this.logOperation(
         "createEscrow",
-        { orderHash: order.orderHash, resolver, htlcContractAddress },
-        receipt.hash
+        { orderHash: order.orderHash, resolver, status: "skipped" },
+        txReference
       );
-      return receipt.hash;
+
+      return txReference;
     } catch (error) {
       this.logOperation(
         "createEscrow",

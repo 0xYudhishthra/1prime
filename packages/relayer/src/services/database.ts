@@ -85,8 +85,6 @@ export class DatabaseService {
         initialRateBump: order.initialRateBump || 1000,
         signature: order.signature || "",
         nonce: order.nonce || "",
-        sourceChainHtlcAddress: order.sourceChainHtlcAddress || null,
-        destinationChainHtlcAddress: order.destinationChainHtlcAddress || null,
 
         // SDK-extracted fields (match the schema)
         receiver: (order as any).receiver || null,
