@@ -5,7 +5,10 @@
       "phases": {
         "install": {
           "dependsOn": ["setup"],
-          "cmds": ["pnpm install --no-frozen-lockfile"]
+          "cmds": [
+            "cd packages/cross-chain-sdk && pnpm install && pnpm build",
+            "pnpm install --no-frozen-lockfile"
+          ]
         }
       }
     }

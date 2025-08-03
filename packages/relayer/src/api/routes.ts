@@ -137,7 +137,7 @@ const generateOrderSchema = Joi.object({
 });
 
 const submitSignedOrderSchema = Joi.object({
-  orderHash: Joi.string().hex().length(64).required(),
+  orderHash: Joi.string().required(),
   signature: Joi.string().required(),
 });
 
@@ -344,13 +344,15 @@ export function createRelayerRoutes(
       const submitRequest: SubmitSignedOrderRequest = req.body;
 
       try {
-        // Use simplified submission - only orderHash + signature needed
-        const orderStatus = await relayerService.submitSignedOrderSimplified(
+        // Submit signed order - only orderHash + signature needed
+        console.log("submitRequest", submitRequest.orderHash);
+        console.log("submitRequest", submitRequest.signature);
+        const orderStatus = await relayerService.submitSignedOrder(
           submitRequest.orderHash,
           submitRequest.signature
         );
 
-        logger.info("Signed order submitted via API (simplified)", {
+        logger.info("Signed order submitted via API", {
           orderHash: submitRequest.orderHash,
         });
 

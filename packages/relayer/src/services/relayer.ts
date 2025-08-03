@@ -412,115 +412,9 @@ export class RelayerService extends EventEmitter {
 
   /**
    * Submit signed order and start relayer processing (Step 6)
+   * Simplified: takes only orderHash and signature, retrieves order from database
    */
   async submitSignedOrder(
-    orderHash: string,
-    signedOrder: any, // SDK CrossChainOrder
-    signature: string
-  ): Promise<OrderStatus> {
-    try {
-      this.validateInitialized();
-
-      // Extract information from SDK order
-      const srcChainId = Number(signedOrder.srcChainId);
-      const dstChainId = Number(signedOrder.dstChainId);
-      const sourceChain = this.getChainNameFromId(srcChainId);
-      const destinationChain = this.getChainNameFromId(dstChainId);
-
-      // Create our internal FusionOrderExtended format from SDK order
-      const fusionOrder: FusionOrderExtended = {
-        orderHash,
-        maker: signedOrder.maker.toString(),
-        sourceChain,
-        destinationChain,
-        sourceToken: signedOrder.makerAsset.toString(),
-        destinationToken: signedOrder.takerAsset.toString(),
-        sourceAmount: signedOrder.makingAmount.toString(),
-        destinationAmount: signedOrder.takingAmount.toString(),
-        secretHash: signedOrder.hashLock.toString(), // This might need adjustment based on SDK structure
-        timeout: Date.now() + 3600000, // 1 hour from now - you may want to extract from order
-        auctionStartTime: Number(
-          signedOrder.auction?.startTime || BigInt(Date.now())
-        ),
-        auctionDuration: Number(signedOrder.auction?.duration || 120000n), // 2 minutes default
-        initialRateBump: signedOrder.auction?.initialRateBump || 1000,
-        signature,
-        nonce: signedOrder.salt.toString(),
-        createdAt: Date.now(),
-        phase: "submitted", // Order is submitted and waiting for resolver to claim it
-
-        // SDK-specific fields
-        receiver: signedOrder.receiver?.toString(),
-        srcSafetyDeposit: signedOrder.srcSafetyDeposit?.toString(),
-        dstSafetyDeposit: signedOrder.dstSafetyDeposit?.toString(),
-        allowPartialFills: signedOrder.allowPartialFills || false,
-        allowMultipleFills: signedOrder.allowMultipleFills || false,
-
-        // Enhanced timelock details from SDK
-        detailedTimeLocks: {
-          srcWithdrawal: Number(signedOrder.timeLocks?.srcWithdrawal || 300n),
-          srcPublicWithdrawal: Number(
-            signedOrder.timeLocks?.srcPublicWithdrawal || 600n
-          ),
-          srcCancellation: Number(
-            signedOrder.timeLocks?.srcCancellation || 1800n
-          ),
-          srcPublicCancellation: Number(
-            signedOrder.timeLocks?.srcPublicCancellation || 3600n
-          ),
-          dstWithdrawal: Number(signedOrder.timeLocks?.dstWithdrawal || 300n),
-          dstPublicWithdrawal: Number(
-            signedOrder.timeLocks?.dstPublicWithdrawal || 600n
-          ),
-          dstCancellation: Number(
-            signedOrder.timeLocks?.dstCancellation || 1800n
-          ),
-        },
-
-        // Auction details
-        enhancedAuctionDetails: {
-          points: signedOrder.auction?.points || [],
-        },
-      };
-
-      // Store in database
-      await this.databaseService.createOrder(fusionOrder);
-
-      // Create order through OrderManager with the signed data
-      const orderStatus =
-        await this.orderManager.createOrderFromSDK(fusionOrder);
-
-      // Start timelock monitoring
-      if (fusionOrder.detailedTimeLocks) {
-        await this.timelockManager.startMonitoring(fusionOrder.orderHash);
-      }
-
-      this.stats.ordersCreated++;
-
-      this.logger.info("Signed order submitted successfully", {
-        orderHash,
-        maker: fusionOrder.maker,
-        sourceChain: fusionOrder.sourceChain,
-        destinationChain: fusionOrder.destinationChain,
-        srcChainId,
-        dstChainId,
-      });
-
-      return orderStatus;
-    } catch (error) {
-      this.logger.error("Failed to submit signed order", {
-        error: (error as Error).message,
-        orderHash,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Simplified submit signed order - only requires orderHash + signature
-   * Retrieves full order details from database
-   */
-  async submitSignedOrderSimplified(
     orderHash: string,
     signature: string
   ): Promise<OrderStatus> {
@@ -534,17 +428,48 @@ export class RelayerService extends EventEmitter {
         throw new Error(`Prepared order not found for hash: ${orderHash}`);
       }
 
-      const { fusionOrder: signedOrder, orderDetails } = preparedOrder;
+      const { fusionOrder, orderDetails } = preparedOrder;
+
+      console.log("preparedOrder", fusionOrder);
+      console.log("orderDetails", orderDetails);
 
       this.logger.info("Retrieved prepared order for submission", {
         orderHash,
         userAddress: orderDetails.userAddress,
       });
 
-      // Use the existing submitSignedOrder logic with retrieved data
-      return await this.submitSignedOrder(orderHash, signedOrder, signature);
+      // Update the order with signature and submission details
+      const completedOrder: FusionOrderExtended = {
+        ...fusionOrder,
+        signature,
+        phase: "submitted", // Order is submitted and waiting for resolver to claim it
+        createdAt: Date.now(),
+      };
+
+      // Store in database
+      await this.databaseService.storeSignedOrder(completedOrder);
+
+      // Create order through OrderManager with the signed data
+      const orderStatus =
+        await this.orderManager.createOrderFromSDK(completedOrder);
+
+      // Start timelock monitoring
+      if (completedOrder.detailedTimeLocks) {
+        await this.timelockManager.startMonitoring(completedOrder.orderHash);
+      }
+
+      this.stats.ordersCreated++;
+
+      this.logger.info("Signed order submitted successfully", {
+        orderHash,
+        maker: completedOrder.maker,
+        sourceChain: completedOrder.sourceChain,
+        destinationChain: completedOrder.destinationChain,
+      });
+
+      return orderStatus;
     } catch (error) {
-      this.logger.error("Failed to submit signed order (simplified)", {
+      this.logger.error("Failed to submit signed order", {
         error: (error as Error).message,
         orderHash,
       });
