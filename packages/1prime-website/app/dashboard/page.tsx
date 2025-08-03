@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -76,7 +76,7 @@ function DashboardPage() {
   const router = useRouter();
   const { token, isAuthenticated, logout } = useAuth();
 
-  const fetchWalletData = async () => {
+  const fetchWalletData = useCallback(async () => {
     if (!token) {
       setError('No auth token found. Please sign in.');
       setLoading(false);
@@ -85,13 +85,13 @@ function DashboardPage() {
 
     console.log(
       'Retrieved token:',
-      token ? token.substring(0, 20) + '...' : 'null'
+      token ? token.substring(0, 20) + '...' : 'null',
     ); // Debug log
 
     try {
       console.log(
         'Making API call with token:',
-        token.substring(0, 20) + '...'
+        token.substring(0, 20) + '...',
       ); // Debug log
       const response = await fetch(
         'https://shortcut-auth.tanweihup.workers.dev/api/wallet/balances',
@@ -100,7 +100,7 @@ function DashboardPage() {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
       );
 
       console.log('Response status:', response.status); // Debug log
@@ -130,7 +130,7 @@ function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token, router]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -143,7 +143,7 @@ function DashboardPage() {
 
   useEffect(() => {
     fetchWalletData();
-  }, []);
+  }, [fetchWalletData]);
 
   if (loading) {
     return (
