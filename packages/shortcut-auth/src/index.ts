@@ -8,14 +8,6 @@ import {
   getTestnetTokenAddresses,
   getTestnetFaucetInfo,
 } from './zerodev';
-import {
-  createMultiChainAccount,
-  sendTransaction,
-  getWalletAddresses,
-  getMultiChainBalances,
-  getTestnetTokenAddresses,
-  getTestnetFaucetInfo,
-} from './zerodev';
 import { smartWallet } from './db/schema';
 import { createDb } from './db';
 import { eq } from 'drizzle-orm';
@@ -30,9 +22,62 @@ import {
 } from './nearwallet';
 import { KeyPairString } from '@near-js/crypto';
 import { cors } from 'hono/cors';
-import { getAllSupportedChains } from './chains';
+import { getAllSupportedChains, SUPPORTED_CHAINS } from './chains';
 
 import { keccak256, toUtf8Bytes } from 'ethers';
+import { CrossChainSwapService } from './services/cross-chain-swap';
+import { CrossChainSwapRequest } from './types/cross-chain';
+import { crossChainOrder } from './db/schema';
+
+// Map user-friendly chain names to chain IDs
+function mapChainNameToId(chainName: string): string {
+  const chainMapping: Record<string, string> = {
+    // EVM chains (using SUPPORTED_CHAINS)
+    'ethereum': '11155111',      // Ethereum Sepolia
+    'arbitrum': '421614',        // Arbitrum Sepolia  
+    'optimism': '11155420',      // Optimism Sepolia
+    // NEAR chains
+    'near': '398',               // NEAR Testnet
+    'near-testnet': '398',       // NEAR Testnet (alternative)
+    'near-mainnet': 'mainnet',   // NEAR Mainnet
+  };
+  
+  return chainMapping[chainName.toLowerCase()] || chainName; // Lowercase and return original if no mapping found
+}
+
+// Convert user-friendly amount to smallest unit (for USDC: 6 decimals)
+function convertAmountToSmallestUnit(amount: string): string {
+  const USDC_DECIMALS = 6;
+  const amountFloat = parseFloat(amount);
+  
+  if (isNaN(amountFloat)) {
+    throw new Error('Invalid amount format');
+  }
+  
+  // Convert to smallest unit (multiply by 10^6 for USDC)
+  const smallestUnitAmount = Math.floor(amountFloat * Math.pow(10, USDC_DECIMALS));
+  return smallestUnitAmount.toString();
+}
+
+// Get USDC contract address for a given chain ID
+function getUSDCAddress(chainId: string): string {
+  const usdcAddresses: Record<string, string> = {
+    // EVM Testnets
+    '11155111': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // ETH Sepolia USDC
+    '421614': '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',   // Arbitrum Sepolia USDC (placeholder - update with real address)
+    '11155420': '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // Optimism Sepolia USDC (placeholder - update with real address)
+    // NEAR
+    '398': '3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af', // NEAR Testnet USDC
+    'mainnet': 'a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near', // NEAR Mainnet USDC (placeholder)
+  };
+  
+  const address = usdcAddresses[chainId];
+  if (!address) {
+    throw new Error(`USDC contract address not found for chain ID: ${chainId}`);
+  }
+  
+  return address;
+}
 
 const app = new Hono<{
   Bindings: CloudflareBindings;
@@ -502,6 +547,259 @@ app.post("/hash-random-number", async (c) => {
   const hash = keccak256(toUtf8Bytes(number));
   console.log(hash);
   return c.json({ hash });
+});
+
+app.post('/api/cross-chain-swap', async (c) => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const db = createDb(c.env.DATABASE_URL);
+  const wallet = await db
+    .select()
+    .from(smartWallet)
+    .where(eq(smartWallet.userId, session.user.id))
+    .limit(1);
+
+  if (!wallet[0]) {
+    return c.json({ error: 'Wallet not found' }, 404);
+  }
+
+  if (!wallet[0].evm_smartAccountAddress || !wallet[0].evm_signerPrivateKey) {
+    return c.json({ error: 'EVM smart wallet not properly configured' }, 400);
+  }
+
+  try {
+    const swapRequest: CrossChainSwapRequest = await c.req.json();
+    
+    // Validate request
+    if (!swapRequest.amount || !swapRequest.fromChain || !swapRequest.toChain) {
+      return c.json({ error: 'Missing required swap parameters (amount, fromChain, toChain)' }, 400);
+    }
+
+    // Map chain names to chain IDs and convert amount
+    const fromChainId = mapChainNameToId(swapRequest.fromChain);
+    const toChainId = mapChainNameToId(swapRequest.toChain);
+    
+    let convertedAmount: string;
+    try {
+      convertedAmount = convertAmountToSmallestUnit(swapRequest.amount);
+    } catch (error) {
+      return c.json({ error: `Invalid amount: ${swapRequest.amount}. Please provide a valid number.` }, 400);
+    }
+    
+    // Auto-assign USDC contract addresses based on chains
+    let fromTokenAddress: string;
+    let toTokenAddress: string;
+    try {
+      fromTokenAddress = getUSDCAddress(fromChainId);
+      toTokenAddress = getUSDCAddress(toChainId);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'Unknown error getting USDC addresses' }, 400);
+    }
+    
+    // Validate supported chain IDs
+    const supportedChainIds = ["11155111", "421614", "11155420", "398", "mainnet"]; // ETH Sepolia, Arbitrum Sepolia, Optimism Sepolia, NEAR Testnet, NEAR Mainnet
+    
+    if (!supportedChainIds.includes(fromChainId)) {
+      return c.json({ error: `Unsupported source chain: ${swapRequest.fromChain} (mapped to ${fromChainId})` }, 400);
+    }
+    
+    if (!supportedChainIds.includes(toChainId)) {
+      return c.json({ error: `Unsupported destination chain: ${swapRequest.toChain} (mapped to ${toChainId})` }, 400);
+    }
+
+    // For NEAR source chains, validate NEAR credentials
+    const sourceIsNear = fromChainId === '398' || fromChainId === 'mainnet';
+    if (sourceIsNear && (!wallet[0].near_accountId || !wallet[0].near_keypair)) {
+      return c.json({ error: 'NEAR wallet not properly configured for NEAR source chain' }, 400);
+    }
+
+    console.log('Starting bi-directional cross-chain swap:', {
+      userId: session.user.id,
+      sourceChain: swapRequest.fromChain,
+      destinationChain: swapRequest.toChain,
+      sourceChainId: fromChainId,
+      destinationChainId: toChainId,
+      originalAmount: swapRequest.amount,
+      convertedAmount: convertedAmount,
+      fromTokenAddress: fromTokenAddress,
+      toTokenAddress: toTokenAddress,
+      sourceIsNear: sourceIsNear,
+      evmAddress: wallet[0].evm_smartAccountAddress,
+      nearAccountId: wallet[0].near_accountId,
+      request: swapRequest,
+    });
+
+    // Initialize swap service
+    const swapService = new CrossChainSwapService(c.env.DATABASE_URL);
+    swapService.setDatabase(db);
+
+    // Create normalized swap request with chain IDs, converted amount, and USDC addresses for relayer
+    const normalizedSwapRequest = {
+      ...swapRequest,
+      fromChain: fromChainId,
+      toChain: toChainId,
+      amount: convertedAmount,
+      fromToken: fromTokenAddress,
+      toToken: toTokenAddress,
+    };
+
+    // Execute the complete swap flow with bi-directional support
+    const result = await swapService.executeSwap(
+      normalizedSwapRequest,
+      session.user.id,
+      wallet[0].evm_smartAccountAddress,
+      wallet[0].evm_signerPrivateKey,
+      wallet[0].near_accountId || undefined,
+      wallet[0].near_keypair as KeyPairString || undefined
+    );
+
+    console.log('Cross-chain swap result:', result);
+
+    return c.json({
+      success: result.result === 'completed',
+      data: {
+        orderId: result.orderId,
+        status: result.result,
+        message: result.result === 'completed' 
+          ? 'Cross-chain swap completed successfully' 
+          : 'Cross-chain swap failed',
+      },
+      error: result.error,
+      timestamp: Date.now(),
+    });
+
+  } catch (error) {
+    console.error('Cross-chain swap error:', error);
+    return c.json({ 
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      timestamp: Date.now(),
+    }, 500);
+  }
+});
+
+app.get('/api/cross-chain-swap/:orderId/status', async (c) => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const orderId = c.req.param('orderId');
+  
+  try {
+    const db = createDb(c.env.DATABASE_URL);
+    const swapService = new CrossChainSwapService(c.env.DATABASE_URL);
+    swapService.setDatabase(db);
+
+    const orderStatus = await swapService.getOrderStatus(orderId);
+    
+    if (!orderStatus) {
+      return c.json({ error: 'Order not found' }, 404);
+    }
+
+    // Verify user owns this order
+    if (orderStatus.userId !== session.user.id) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    // Prefer live relayer status over local database status
+    const currentStatus = orderStatus.liveStatus || {
+      phase: orderStatus.currentPhase,
+      isCompleted: orderStatus.isCompleted,
+    };
+
+    return c.json({
+      success: true,
+      data: {
+        orderId: orderStatus.id,
+        orderHash: orderStatus.orderHash,
+        currentPhase: currentStatus.phase,
+        isCompleted: currentStatus.isCompleted,
+        isSuccessful: orderStatus.isSuccessful,
+        errorMessage: orderStatus.errorMessage,
+        secretRevealed: orderStatus.secretRevealed,
+        sourceChain: orderStatus.sourceChain,
+        destinationChain: orderStatus.destinationChain,
+        sourceToken: orderStatus.sourceToken,
+        destinationToken: orderStatus.destinationToken,
+        sourceAmount: orderStatus.sourceAmount,
+        destinationAmount: orderStatus.destinationAmount,
+        statusHistory: orderStatus.statusHistory,
+        createdAt: orderStatus.createdAt,
+        completedAt: orderStatus.completedAt,
+        // Include live relayer data if available
+        liveRelayerStatus: orderStatus.liveStatus,
+        dataSource: orderStatus.liveStatus ? 'relayer' : 'local',
+      },
+      timestamp: Date.now(),
+    });
+
+  } catch (error) {
+    console.error('Order status fetch error:', error);
+    return c.json({ 
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch order status',
+      timestamp: Date.now(),
+    }, 500);
+  }
+});
+
+app.get('/api/cross-chain-swap/orders', async (c) => {
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
+    headers: c.req.raw.headers,
+  });
+
+  if (!session) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  try {
+    const db = createDb(c.env.DATABASE_URL);
+    const swapService = new CrossChainSwapService(c.env.DATABASE_URL);
+    swapService.setDatabase(db);
+
+    const orders = await swapService.getUserOrders(session.user.id);
+
+    return c.json({
+      success: true,
+      data: orders.map(order => ({
+        orderId: order.id,
+        orderHash: order.orderHash,
+        currentPhase: order.currentPhase,
+        isCompleted: order.isCompleted,
+        isSuccessful: order.isSuccessful,
+        sourceChain: order.sourceChain,
+        destinationChain: order.destinationChain,
+        sourceToken: order.sourceToken,
+        destinationToken: order.destinationToken,
+        sourceAmount: order.sourceAmount,
+        destinationAmount: order.destinationAmount,
+        createdAt: order.createdAt,
+        completedAt: order.completedAt,
+      })),
+      timestamp: Date.now(),
+    });
+
+  } catch (error) {
+    console.error('Orders fetch error:', error);
+    return c.json({ 
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch orders',
+      timestamp: Date.now(),
+    }, 500);
+  }
 });
 
 export default app;

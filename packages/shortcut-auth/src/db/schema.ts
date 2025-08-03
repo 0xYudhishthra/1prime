@@ -94,3 +94,47 @@ export const smartWallet = pgTable('smart_wallet', {
     .$defaultFn(() => /* @__PURE__ */ new Date())
     .notNull(),
 });
+
+export const crossChainOrder = pgTable('cross_chain_order', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  orderHash: text('order_hash').unique(),
+  randomNumber: text('random_number').notNull(),
+  secretHash: text('secret_hash').notNull(),
+  sourceChain: text('source_chain').notNull(),
+  destinationChain: text('destination_chain').notNull(),
+  sourceToken: text('source_token').notNull(),
+  destinationToken: text('destination_token').notNull(),
+  sourceAmount: text('source_amount').notNull(),
+  destinationAmount: text('destination_amount'),
+  currentPhase: text('current_phase')
+    .notNull()
+    .default('preparing'),
+  relayerUrl: text('relayer_url').notNull(),
+  isCompleted: boolean('is_completed').notNull().default(false),
+  isSuccessful: boolean('is_successful'),
+  errorMessage: text('error_message'),
+  secretRevealed: boolean('secret_revealed').notNull().default(false),
+  secretRevealedAt: timestamp('secret_revealed_at'),
+  orderData: json('order_data').$type<any>(),
+  signedOrderData: json('signed_order_data').$type<any>(),
+  statusHistory: json('status_history')
+    .$type<
+      {
+        phase: string;
+        timestamp: number;
+        data?: any;
+      }[]
+    >()
+    .notNull()
+    .default([]),
+  createdAt: timestamp('created_at')
+    .$defaultFn(() => /* @__PURE__ */ new Date())
+    .notNull(),
+  updatedAt: timestamp('updated_at')
+    .$defaultFn(() => /* @__PURE__ */ new Date())
+    .notNull(),
+  completedAt: timestamp('completed_at'),
+});
