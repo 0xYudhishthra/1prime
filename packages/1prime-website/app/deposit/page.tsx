@@ -100,7 +100,7 @@ function DepositPageContent() {
     return (
       <div className="min-h-screen bg-white text-black">
         <div className="mx-auto max-w-4xl px-6 py-8">
-          <div className="mb-6 flex items-center gap-4">
+          {/* <div className="mb-6 flex items-center gap-4">
             <Link href="/dashboard">
               <Button variant="outline" size="sm">
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -108,7 +108,7 @@ function DepositPageContent() {
               </Button>
             </Link>
             <h1 className="text-3xl font-bold">Deposit Tokens</h1>
-          </div>
+          </div> */}
 
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -122,7 +122,7 @@ function DepositPageContent() {
     return (
       <div className="min-h-screen bg-white text-black">
         <div className="mx-auto max-w-4xl px-6 py-8">
-          <div className="mb-6 flex items-center gap-4">
+          {/* <div className="mb-6 flex items-center gap-4">
             <Link href="/dashboard">
               <Button variant="outline" size="sm">
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -130,7 +130,7 @@ function DepositPageContent() {
               </Button>
             </Link>
             <h1 className="text-3xl font-bold">Deposit Tokens</h1>
-          </div>
+          </div> */}
 
           <Card className="border-red-200 bg-red-50">
             <CardContent className="pt-6">
