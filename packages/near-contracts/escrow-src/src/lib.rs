@@ -124,6 +124,21 @@ impl EscrowSrc {
             None
         };
 
+        if immutables.token.clone().as_str() != "near" && immutables.amount.clone() > 0{
+            Promise::new(immutables.token.clone()).function_call(
+                "transfer_from".to_string(),
+                near_sdk::serde_json::to_vec(
+                    &serde_json::json!({
+                        "from": env::predecessor_account_id(),
+                        "to": env::current_account_id(),
+                        "value": immutables.amount.clone().to_string(),
+                    })
+                ).unwrap(),
+                NearToken::from_yoctonear(0),
+                Gas::from_tgas(5),
+            );
+        }
+
         let state = EscrowState {
             is_withdrawn: false,
             is_cancelled: false,

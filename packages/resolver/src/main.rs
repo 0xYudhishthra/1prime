@@ -13,7 +13,7 @@ use crate::{agent::agent_account_id, eth::utils::{deploy_eth_resolver_contract, 
 
 pub async fn sample_deploy_near_src_contract() {
     let order = construct_sample_order().await;
-    deploy_near_src_contract(order, "1234567890".to_string(), 1).await;
+    deploy_near_src_contract(order, "1234567890".to_string(), 10).await;
 }
 
 #[tokio::main]
@@ -41,7 +41,7 @@ async fn main() {
             interval.tick().await;
             // Replace with your actual API call
             // Example: let response = reqwest::get("https://api.example.com/endpoint").await;
-            utils::read_order().await;
+            //utils::read_order().await;
         }
     });
 

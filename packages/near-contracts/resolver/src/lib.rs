@@ -2,6 +2,7 @@ use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::json_types::{U128, U64};
 use near_sdk::{env, near_bindgen, AccountId, Gas, NearToken, PanicOnDefault, Promise};
+use near_sdk::log;
 
 #[cfg(not(target_arch = "wasm32"))]
 use near_sdk::schemars::{self, JsonSchema};
@@ -22,8 +23,8 @@ pub struct Resolver {
 pub struct Order {
     pub maker: AccountId,
     pub taker: AccountId,
-    pub making_amount: U128,
-    pub taking_amount: U128,
+    pub making_amount: u128,
+    pub taking_amount: u128,
     pub maker_asset: AccountId, // "near" for native NEAR
     pub taker_asset: String,    // ETH address of token on destination
     pub salt: String,
@@ -35,10 +36,10 @@ pub struct Order {
 #[serde(crate = "near_sdk::serde")]
 pub struct OrderExtension {
     pub hashlock: String,
-    pub src_chain_id: U64,
-    pub dst_chain_id: U64,
-    pub src_safety_deposit: U128,
-    pub dst_safety_deposit: U128,
+    pub src_chain_id: u64,
+    pub dst_chain_id: u64,
+    pub src_safety_deposit: u128,
+    pub dst_safety_deposit: u128,
     pub timelocks: Timelocks,
 }
 
@@ -46,7 +47,7 @@ pub struct OrderExtension {
 #[cfg_attr(not(target_arch = "wasm32"), derive(JsonSchema))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Timelocks {
-    pub deployed_at: U64, // Deployment timestamp (MUST match factory)
+    pub deployed_at: u64, // Deployment timestamp (MUST match factory)
     pub src_withdrawal: u32,
     pub src_public_withdrawal: u32,
     pub src_cancellation: u32,
@@ -65,8 +66,8 @@ pub struct Immutables {
     pub maker: AccountId,
     pub taker: AccountId,
     pub token: AccountId,
-    pub amount: U128,
-    pub safety_deposit: U128,
+    pub amount: u128,
+    pub safety_deposit: u128,
     pub timelocks: Timelocks,
 }
 
@@ -75,9 +76,9 @@ pub struct Immutables {
 #[serde(crate = "near_sdk::serde")]
 pub struct DstImmutablesComplement {
     pub maker: AccountId,
-    pub amount: U128,
+    pub amount: u128,
     pub token: AccountId,
-    pub safety_deposit: U128,
+    pub safety_deposit: u128,
     pub chain_id: String,
 }
 
@@ -99,7 +100,7 @@ impl Resolver {
         &mut self,
         order: Order,
         order_signature: String, // For future validation
-        amount: U128,
+        amount: u128,
     ) -> Promise {
         // Only owner can deploy
         assert_eq!(
@@ -119,7 +120,7 @@ impl Resolver {
 
         // Create immutables for source escrow
         let mut timelocks = order.extension.timelocks.clone();
-        timelocks.deployed_at = U64::from(0); // Will be set by factory during deployment
+        timelocks.deployed_at = 0; // Will be set by factory during deployment
 
         let immutables = Immutables {
             order_hash: order_hash.clone(),
@@ -135,7 +136,7 @@ impl Resolver {
         // Create destination complement info
         let dst_complement = DstImmutablesComplement {
             maker: order.maker.clone(), // Can be different if order.receiver is set
-            amount: U128::from((u128::from(order.taking_amount) * u128::from(amount)) / u128::from(order.making_amount)), // Pro-rata
+            amount: u128::from((order.taking_amount * amount) / order.making_amount), // Pro-rata
             token: order.taker_asset.parse().unwrap(),
             safety_deposit: order.extension.dst_safety_deposit,
             chain_id: u64::from(order.extension.dst_chain_id).to_string(),
@@ -148,12 +149,14 @@ impl Resolver {
             NearToken::from_yoctonear(u128::from(order.extension.src_safety_deposit))
         };
 
+        log!("Gas left: {:?}", Gas::from_gas(env::prepaid_gas().as_gas() - env::used_gas().as_gas()));
+
         // Call factory to create source escrow
         Promise::new(self.escrow_factory.clone()).function_call(
             "create_src_escrow".to_string(),
             serde_json::to_vec(&(order_hash, immutables, dst_complement)).unwrap(),
             required_deposit,
-            Gas::from_tgas(50),
+            Gas::from_tgas(250),
         )
     }
 

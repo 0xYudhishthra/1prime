@@ -59,12 +59,12 @@ pub struct Immutables {
 
 pub async fn construct_sample_order() -> Order {
     let order = Order {
-        maker: AccountId::from_str("example-maker.testnet").unwrap(),
-        taker: AccountId::from_str("example-taker.testnet").unwrap(),
-        making_amount: NearToken::from_yoctonear(1).as_yoctonear(), // 1 NEAR
-        taking_amount: 1000000000000000000, // 1 ETH
-        maker_asset: AccountId::from_str("near").unwrap(),
-        taker_asset: "0x1234567890abcdef1234567890abcdef12345678".to_string(), // Example ETH address
+        maker: AccountId::from_str("victorevolves.testnet").unwrap(),
+        taker: AccountId::from_str(&get_funding_near_address().await).unwrap(),
+        making_amount: 10, // 1 NEAR
+        taking_amount: 10, // 1 ETH
+        maker_asset: AccountId::from_str("3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af").unwrap(),
+        taker_asset: AccountId::from_str("3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af").unwrap().to_string(), // Example ETH address
         salt: "example-salt".to_string(),
         extension: OrderExtension {
             hashlock: "example-hashlock".to_string(),
@@ -202,9 +202,15 @@ pub async fn delete_near_account() {
                 near_crypto::PublicKey::ED25519(ED25519PublicKey(signer_public_key_bytes))
             )
             .fetch_from_testnet()
-            .await.unwrap();
+            .await;
+    
+    if (nonce_data.is_err()) {
+        println!("{:?}", "Account is already deleted!");
+        return;
+    }
+    
 
-    let mut nonce = U64(nonce_data.data.nonce);
+    let mut nonce = U64(nonce_data.unwrap().data.nonce);
 
     /// deploy resolver contract by referencing the global contract code
     let delete_account_action = Action::DeleteAccount(DeleteAccountAction {

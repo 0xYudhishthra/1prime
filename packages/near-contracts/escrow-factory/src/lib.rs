@@ -231,7 +231,7 @@ impl EscrowFactory {
             token_balance_check.then(
                 Self::ext(env::current_account_id())
                     .with_attached_deposit(env::attached_deposit())
-                    .src_contract_deployment(order_hash, immutables, dst_complement, 0)
+                    .on_token_balance_checked_result_received(order_hash, immutables, dst_complement)
             )
             // Note: In a real implementation, you'd need to handle this asynchronously
             // For now, we assume the balance check will be done in the escrow contract
@@ -249,23 +249,25 @@ impl EscrowFactory {
         order_hash: String,
         immutables: Immutables,
         dst_complement: DstImmutablesComplement,
-        #[callback_result] call_result: Result<u128, near_sdk::PromiseError>,
+        #[callback_result] call_result: Result<String, near_sdk::PromiseError>,
     ) -> Promise {
         match call_result {
             Ok(balance) => {
                 log!("Token balance check successful: {}", balance);
                 // Here you would typically handle the balance check result
                 Self::ext(env::current_account_id())
+                .with_attached_deposit(env::attached_deposit())
                 .src_contract_deployment(
                     order_hash.clone(),
                     immutables.clone(),
                     dst_complement.clone(),
-                    NearToken::from_yoctonear(balance).as_yoctonear()
+                    balance.parse::<u128>().unwrap()
                 )
             }
             Err(e) => {
                 log!("Token balance check failed: {:?}", e);
                 Self::ext(env::current_account_id())
+                .with_attached_deposit(env::attached_deposit())
                 .src_contract_deployment(
                     order_hash.clone(),
                     immutables.clone(),
@@ -314,28 +316,57 @@ impl EscrowFactory {
             dst_complement
         );
 
-        let promise = Promise::new(escrow_account.clone())
+        let mut promise = Promise::new(escrow_account.clone())
             .create_account()
             .add_full_access_key(env::signer_account_pk())
             .transfer(env::attached_deposit())
-            .use_global_contract_by_account_id(self.escrow_src_template.clone())
-            .function_call(
-                "init".to_string(),
-                near_sdk::serde_json::to_vec(&serde_json::json!({
-                    "args": &InitEscrowArgs {
-                        immutables: immutables.clone(),
-                        factory: env::current_account_id(),
-                    }
-                }
-                ))
-                .unwrap(),
-                NearToken::from_yoctonear(required_deposit), // No additional deposit needed
-                Gas::from_tgas(30), // 30 TGas for initialization
-            );
+            .use_global_contract_by_account_id(self.escrow_src_template.clone());
 
+        if required_approval > 0 {
+            promise = promise.then(
+                Promise::new(immutables.token.clone())
+                    .function_call(
+                        "transfer_from".to_string(),
+                        near_sdk::serde_json::to_vec(&serde_json::json!({
+                            "from": immutables.maker.clone(),
+                            "to": immutables.taker.clone(),
+                            "value": required_approval.to_string(),
+                        }))
+                        .unwrap(),
+                        NearToken::from_yoctonear(0), // No additional deposit
+                        Gas::from_tgas(5), // 5 TGas for transfer call
+                    )
+            ).then(
+                Promise::new(immutables.token.clone()).function_call(
+                    "approve".to_string(),
+                    near_sdk::serde_json::to_vec(
+                        &serde_json::json!({
+                            "spender_id": escrow_account.clone(),
+                            "value": required_approval.to_string(),
+                        })
+                    ).unwrap(),
+                    NearToken::from_yoctonear(0),
+                    Gas::from_tgas(5),
+                )
+            );
+        }
         // Store mapping
         self.deployed_escrows.insert(&order_hash, &escrow_account);
         self.escrow_counter += 1;
+
+        promise = promise.then(Promise::new(escrow_account.clone()).function_call(
+            "init".to_string(),
+            near_sdk::serde_json::to_vec(
+                        &serde_json::json!({
+                            "args": &InitEscrowArgs {
+                                immutables,
+                                factory: env::current_account_id(),
+                }
+                        }))
+            .unwrap(),
+            env::attached_deposit(), // No additional deposit
+            Gas::from_tgas(50), // 50 TGas for init call
+        ));
 
         // Callback for verification
         promise.then(Promise::new(env::current_account_id()).function_call(
