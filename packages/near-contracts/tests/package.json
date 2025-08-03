@@ -26,7 +26,12 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "@near-js/accounts": "^2.2.4",
+    "@near-js/keystores-node": "^2.2.4",
+    "@near-js/providers": "^2.2.4",
+    "@near-js/signers": "^2.2.4",
     "@near-js/types": "^2.2.4",
+    "dotenv": "^17.2.1",
     "near-api-js": "^6.2.4"
   },
   "repository": {

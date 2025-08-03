@@ -58,14 +58,17 @@ const generateOrderSchema = Joi.object({
 });
 
 const submitSignedOrderSchema = Joi.object({
-  orderHash: Joi.string().required(),
+  orderHash: Joi.string()
+    .pattern(/^(0x)?[a-fA-F0-9]{40,70}$/)
+    .message(
+      "Order hash must be 40-70 hex characters, optionally prefixed with 0x"
+    )
+    .required(),
   signature: Joi.string().required(),
 });
 
 const claimOrderSchema = Joi.object({
   resolverAddress: Joi.string().required(),
-  estimatedGas: Joi.number().integer().min(0).required(),
-  signature: Joi.string().required(),
 });
 
 const escrowDeploymentSchema = Joi.object({
@@ -108,6 +111,18 @@ export function createRelayerRoutes(
     (req: Request, res: Response, next: NextFunction) => {
       return Promise.resolve(fn(req, res, next)).catch(next);
     };
+
+  // Helper function to validate hash format (accepts both 0x-prefixed and non-prefixed)
+  const isValidHash = (hash: string): boolean => {
+    if (!hash) return false;
+
+    // Remove 0x prefix if present
+    const cleanHash = hash.startsWith("0x") ? hash.slice(2) : hash;
+
+    // Check if it's a valid hex string with reasonable length (40-70 characters)
+    // This covers: addresses (40), transaction hashes (64), and other hash formats
+    return /^[a-fA-F0-9]{40,70}$/.test(cleanHash);
+  };
 
   // Helper function to validate request body
   const validateBody =
@@ -266,7 +281,7 @@ export function createRelayerRoutes(
       const { hash } = req.params;
       const orderHash = hash;
 
-      if (!orderHash || !/^[a-fA-F0-9]{64}$/.test(orderHash)) {
+      if (!isValidHash(orderHash)) {
         return res
           .status(400)
           .json(createResponse(false, undefined, "Invalid order hash format"));
@@ -299,6 +314,10 @@ export function createRelayerRoutes(
     asyncHandler(async (req: Request, res: Response) => {
       try {
         const activeOrders = await relayerService.getActiveOrders();
+        logger.debug("API: Retrieved active orders", {
+          count: activeOrders.length,
+          orderHashes: activeOrders.map(order => order.orderHash),
+        });
         res.json(createResponse(true, serializeForJson(activeOrders)));
       } catch (error) {
         logger.error("API: Failed to get active orders", {
@@ -318,7 +337,7 @@ export function createRelayerRoutes(
       const { hash } = req.params;
 
       // Validate order hash format
-      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+      if (!isValidHash(hash)) {
         return res
           .status(400)
           .json(createResponse(false, undefined, "Invalid order hash format"));
@@ -421,7 +440,7 @@ export function createRelayerRoutes(
       };
 
       // Validate order hash format
-      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+      if (!isValidHash(hash)) {
         return res
           .status(400)
           .json(createResponse(false, undefined, "Invalid order hash format"));
@@ -473,7 +492,7 @@ export function createRelayerRoutes(
       };
 
       // Validate order hash format
-      if (!hash || !/^[a-fA-F0-9]{64}$/.test(hash)) {
+      if (!isValidHash(hash)) {
         return res
           .status(400)
           .json(createResponse(false, undefined, "Invalid order hash format"));

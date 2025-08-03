@@ -9,6 +9,7 @@ export interface DatabaseConfig {
 
 export interface OrderRecord extends FusionOrder {
   status: OrderStatus;
+  phase?: string; // TimelockPhase["phase"] - optional for backward compatibility
   createdAt: number;
   updatedAt: number;
   events: OrderEvent[];
@@ -90,6 +91,7 @@ export class DatabaseService {
 
         // Standard tracking fields
         status: "pending",
+        phase: (order as any).phase || "submitted", // Default to submitted phase
         createdAt: Date.now(),
         updatedAt: Date.now(),
         events: [
@@ -108,14 +110,46 @@ export class DatabaseService {
         hasOrderHashInRecord: !!orderRecord.orderHash,
       });
 
-      const { data, error } = await this.supabase
+      let { data, error } = await this.supabase
         .from("orders")
         .insert([orderRecord])
         .select()
         .single();
 
       if (error) {
-        throw new Error(`Failed to create order: ${error.message}`);
+        // Check if error is due to missing phase column
+        if (
+          error.message.includes(
+            'column "phase" of relation "orders" does not exist'
+          )
+        ) {
+          this.logger.warn(
+            "Phase column does not exist, retrying without phase field",
+            {
+              orderHash: order.orderHash,
+              error: error.message,
+            }
+          );
+
+          // Remove phase field and retry
+          const { phase, ...orderRecordWithoutPhase } = orderRecord;
+          const retryResult = await this.supabase
+            .from("orders")
+            .insert([orderRecordWithoutPhase])
+            .select()
+            .single();
+
+          if (retryResult.error) {
+            throw new Error(
+              `Failed to create order (retry): ${retryResult.error.message}`
+            );
+          }
+
+          // Use retry data if successful
+          data = retryResult.data;
+        } else {
+          throw new Error(`Failed to create order: ${error.message}`);
+        }
       }
 
       this.logger.info("Order created in database", {
@@ -208,6 +242,171 @@ export class DatabaseService {
     }
   }
 
+  async updateOrderPhase(orderHash: string, phase: string): Promise<void> {
+    try {
+      const updateData: Partial<OrderRecord> = {
+        phase,
+        updatedAt: Date.now(),
+      };
+
+      const { error } = await this.supabase
+        .from("orders")
+        .update(updateData)
+        .eq("orderHash", orderHash);
+
+      if (error) {
+        // Check if error is due to missing phase column
+        if (
+          error.message.includes(
+            'column "phase" of relation "orders" does not exist'
+          )
+        ) {
+          this.logger.warn(
+            "Phase column does not exist, skipping phase update",
+            {
+              orderHash,
+              phase,
+              error: error.message,
+            }
+          );
+
+          // Update status instead as fallback (map phase to status)
+          const fallbackStatus = this.mapPhaseToStatus(phase);
+          await this.updateOrderStatus(orderHash, fallbackStatus);
+          return;
+        }
+        throw new Error(`Failed to update order phase: ${error.message}`);
+      }
+
+      this.logger.info("Order phase updated", {
+        orderHash,
+        phase,
+      });
+    } catch (error) {
+      this.logger.error("Failed to update order phase", {
+        orderHash,
+        phase,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Atomically claim an order by updating phase and assigning resolver
+   * This prevents race conditions and double claiming
+   */
+  async claimOrderAtomic(
+    orderHash: string,
+    resolverAddress: string,
+    currentPhase: string = "submitted"
+  ): Promise<void> {
+    try {
+      // Use a conditional update to ensure order is only claimed if in correct state
+      const { data, error, count } = await this.supabase
+        .from("orders")
+        .update({
+          phase: "claimed",
+          assignedResolver: resolverAddress,
+          updatedAt: Date.now(),
+        })
+        .eq("orderHash", orderHash)
+        .eq("phase", currentPhase) // Only update if still in expected state
+        .select("orderHash"); // Return data to check if update succeeded
+
+      if (error) {
+        // Check if error is due to missing phase or assignedResolver column
+        if (
+          error.message.includes(
+            'column "phase" of relation "orders" does not exist'
+          ) ||
+          error.message.includes(
+            "Could not find the 'assignedResolver' column"
+          ) ||
+          error.message.includes(
+            'column "assignedResolver" of relation "orders" does not exist'
+          )
+        ) {
+          this.logger.warn(
+            "Phase or assignedResolver column does not exist, using status-based claim",
+            {
+              orderHash,
+              resolverAddress,
+              error: error.message,
+            }
+          );
+
+          // Fallback: use status-based atomic update
+          const { data: statusData, error: statusError } = await this.supabase
+            .from("orders")
+            .update({
+              status: "auction_active", // maps to "claimed" phase
+              updatedAt: Date.now(),
+            })
+            .eq("orderHash", orderHash)
+            .eq("status", "pending") // Only update if still pending
+            .select("orderHash");
+
+          if (statusError) {
+            throw new Error(
+              `Failed to claim order atomically (status fallback): ${statusError.message}`
+            );
+          }
+
+          // Check if the status-based update actually affected any rows
+          if (!statusData || statusData.length === 0) {
+            throw new Error(
+              `Order cannot be claimed: either not found or not in 'pending' status (possibly already claimed)`
+            );
+          }
+
+          this.logger.info("Order claimed atomically (status fallback)", {
+            orderHash,
+            resolverAddress,
+            status: "auction_active",
+          });
+          return;
+        }
+        throw new Error(`Failed to claim order atomically: ${error.message}`);
+      }
+
+      // Check if the update actually affected any rows
+      if (!data || data.length === 0) {
+        throw new Error(
+          `Order cannot be claimed: either not found or not in '${currentPhase}' state (possibly already claimed)`
+        );
+      }
+
+      this.logger.info("Order claimed atomically", {
+        orderHash,
+        resolverAddress,
+        phase: "claimed",
+      });
+    } catch (error) {
+      this.logger.error("Failed to claim order atomically", {
+        orderHash,
+        resolverAddress,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  // Map phase to status for backwards compatibility
+  private mapPhaseToStatus(phase: string): any {
+    const phaseToStatusMap: Record<string, string> = {
+      submitted: "pending",
+      claimed: "auction_active",
+      src_escrow_deployed: "processing",
+      dst_escrow_deployed: "processing",
+      "waiting-for-secret": "processing",
+      completed: "completed",
+      cancelled: "cancelled",
+    };
+
+    return phaseToStatusMap[phase] || "pending";
+  }
+
   async addOrderEvent(orderHash: string, event: OrderEvent): Promise<void> {
     try {
       // Get current events
@@ -281,17 +480,98 @@ export class DatabaseService {
       const { data, error } = await this.supabase
         .from("orders")
         .select("*")
-        .in("status", ["pending", "auction_active", "bid_accepted"])
+        .in("status", [
+          "pending",
+          "auction_active",
+          "bid_accepted",
+          "processing",
+          "active",
+          "submitted",
+          "claimed",
+        ])
         .order("createdAt", { ascending: false });
 
       if (error) {
         throw new Error(`Failed to get active orders: ${error.message}`);
       }
 
-      // Return data directly since Supabase handles JSONB automatically
+      this.logger.debug("Retrieved active orders from database", {
+        count: data?.length || 0,
+        statuses: [...new Set((data || []).map(order => order.status))],
+      });
+
       return data || [];
     } catch (error) {
       this.logger.error("Failed to get active orders", {
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  async getOrdersByPhases(phases: string[]): Promise<OrderRecord[]> {
+    try {
+      // First, try to query with the phase column
+      const { data, error } = await this.supabase
+        .from("orders")
+        .select("*")
+        .in("phase", phases)
+        .order("createdAt", { ascending: false });
+
+      if (error) {
+        // Check if error is due to missing phase column
+        if (error.message.includes("column orders.phase does not exist")) {
+          this.logger.warn(
+            "Phase column does not exist, falling back to status-based query",
+            {
+              phases,
+              error: error.message,
+            }
+          );
+
+          // Fallback: query by status instead of phase for backwards compatibility
+          return await this.getActiveOrdersByStatus();
+        }
+        throw new Error(`Failed to get orders by phases: ${error.message}`);
+      }
+
+      return data || [];
+    } catch (error) {
+      this.logger.error("Failed to get orders by phases", {
+        phases,
+        error: (error as Error).message,
+      });
+      throw error;
+    }
+  }
+
+  // Fallback method for when phase column doesn't exist
+  private async getActiveOrdersByStatus(): Promise<OrderRecord[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from("orders")
+        .select("*")
+        .in("status", [
+          "pending",
+          "auction_active",
+          "bid_accepted",
+          "processing",
+        ])
+        .order("createdAt", { ascending: false });
+
+      if (error) {
+        throw new Error(
+          `Failed to get active orders by status: ${error.message}`
+        );
+      }
+
+      this.logger.info("Retrieved orders using status fallback", {
+        count: data?.length || 0,
+      });
+
+      return data || [];
+    } catch (error) {
+      this.logger.error("Failed to get active orders by status", {
         error: (error as Error).message,
       });
       throw error;

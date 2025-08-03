@@ -170,7 +170,7 @@ export class CrossChainOrder {
     }
 
     /**
-     * Create new CrossChainOrder
+     * Create new CrossChainOrder, this would be for ETH <> NEAR swaps
      */
     public static new(
         escrowFactory: Address,
@@ -185,7 +185,7 @@ export class CrossChainOrder {
             whitelist: details.whitelist,
             resolvingStartTime: details.resolvingStartTime ?? now(),
             customReceiver: orderInfo.receiver
-                ? parseAddress(orderInfo.receiver.toString())
+                ? toAddress(orderInfo.receiver) // Convert NEAR or use EVM Address
                 : undefined
         })
 
@@ -195,13 +195,13 @@ export class CrossChainOrder {
             postInteractionData,
             extra?.permit
                 ? new Interaction(
-                      parseAddress(orderInfo.makerAsset.toString()),
+                      toAddress(orderInfo.makerAsset), // Convert NEAR or use EVM Address
                       extra.permit
                   )
                 : undefined,
             escrowParams.hashLock,
             escrowParams.dstChainId,
-            parseAddress(orderInfo.takerAsset.toString()),
+            toAddress(orderInfo.takerAsset), // Convert NEAR or use EVM Address
             escrowParams.srcSafetyDeposit,
             escrowParams.dstSafetyDeposit,
             escrowParams.timeLocks
@@ -225,14 +225,14 @@ export class CrossChainOrder {
         return new CrossChainOrder(
             ext,
             {
-                makerAsset: parseAddress(orderInfo.makerAsset.toString()),
-                takerAsset: parseAddress(orderInfo.takerAsset.toString()),
+                makerAsset: toAddress(orderInfo.makerAsset), // Convert NEAR or use EVM Address
+                takerAsset: toAddress(orderInfo.takerAsset), // Convert NEAR or use EVM Address
                 makingAmount: orderInfo.makingAmount,
                 takingAmount: orderInfo.takingAmount,
-                maker: parseAddress(orderInfo.maker.toString()),
+                maker: toAddress(orderInfo.maker), // Convert NEAR or use EVM Address
                 salt: orderInfo.salt,
                 receiver: orderInfo.receiver
-                    ? parseAddress(orderInfo.receiver.toString())
+                    ? toAddress(orderInfo.receiver) // Convert NEAR or use EVM Address
                     : undefined
             },
             extra

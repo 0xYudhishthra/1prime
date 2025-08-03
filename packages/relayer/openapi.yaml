@@ -245,8 +245,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       responses:
         "200":
           description: Order status retrieved successfully
@@ -306,8 +306,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       responses:
         "200":
           description: Escrow verification completed (check safe field for result)
@@ -382,8 +382,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       requestBody:
         required: true
         content:
@@ -391,10 +391,7 @@ paths:
             schema:
               $ref: "#/components/schemas/ClaimOrderRequest"
             example:
-              orderHash: "0xa3577a7705e04caebabb32e62a231660b7f5556af20a74220d1608c2a9b62d9c"
               resolverAddress: "0xdef456789abcdef123456789abcdef123456789a"
-              estimatedGas: 150000
-              signature: "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890123456789abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"
       responses:
         "200":
           description: Order claimed successfully
@@ -432,8 +429,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       requestBody:
         required: true
         content:
@@ -486,8 +483,8 @@ paths:
           description: Unique hash identifier of the order
           schema:
             type: string
-            pattern: "^[a-fA-F0-9]{64}$"
-          example: "123abc..."
+            pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
+          example: "0x123abc..."
       requestBody:
         required: true
         content:
@@ -631,7 +628,7 @@ components:
       properties:
         orderHash:
           type: string
-          pattern: "^[a-fA-F0-9]{64}$"
+          pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
           description: Order hash from /orders/prepare
         signature:
           type: string
@@ -641,26 +638,12 @@ components:
     ClaimOrderRequest:
       type: object
       required:
-        - orderHash
         - resolverAddress
-        - estimatedGas
-        - signature
       properties:
-        orderHash:
-          type: string
-          pattern: "^[a-fA-F0-9]{64}$"
-          description: Order hash to claim
         resolverAddress:
           type: string
           pattern: "^0x[a-fA-F0-9]{40}$"
           description: Resolver's address
-        estimatedGas:
-          type: integer
-          description: Estimated gas cost for execution
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Resolver's signature
 
     EscrowDeploymentConfirmation:
       type: object
@@ -675,7 +658,7 @@ components:
       properties:
         orderHash:
           type: string
-          pattern: "^[a-fA-F0-9]{64}$"
+          pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
           description: Order hash for which escrow was deployed
         escrowType:
           type: string
@@ -740,102 +723,6 @@ components:
           format: int64
           description: Unix timestamp of the response
 
-    LegacyOrderRequest:
-      type: object
-      required:
-        - sourceChain
-        - destinationChain
-        - sourceToken
-        - destinationToken
-        - sourceAmount
-        - destinationAmount
-        - timeout
-        - signature
-        - nonce
-      properties:
-        sourceChain:
-          type: string
-          description: Source blockchain name
-          enum: ["ethereum", "base", "bsc", "polygon", "arbitrum"]
-          example: "ethereum"
-        destinationChain:
-          type: string
-          description: Destination blockchain name
-          enum: ["near", "near-testnet"]
-          example: "near-testnet"
-        sourceToken:
-          type: string
-          description: Source token symbol or address
-        destinationToken:
-          type: string
-          description: Destination token symbol or address
-        sourceAmount:
-          type: string
-          description: Amount to swap from source chain (in wei/smallest unit)
-        destinationAmount:
-          type: string
-          description: Expected amount on destination chain
-        timeout:
-          type: integer
-          format: int64
-          description: Order timeout timestamp
-
-        initialRateBump:
-          type: integer
-          description: Initial rate bump in basis points (optional)
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Maker's signature
-        nonce:
-          type: string
-          description: Unique nonce for the order
-
-    SDKOrderRequest:
-      type: object
-      required:
-        - sdkOrder
-        - signature
-      properties:
-        sdkOrder:
-          type: object
-          description: SDK-formatted order with enhanced features
-          properties:
-            orderInfo:
-              type: object
-              properties:
-                srcChainId:
-                  type: string
-                dstChainId:
-                  type: string
-                srcToken:
-                  type: string
-                dstToken:
-                  type: string
-                srcAmount:
-                  type: string
-                dstAmount:
-                  type: string
-
-            settlementInfo:
-              type: object
-              properties:
-                hashLock:
-                  type: object
-                  properties:
-                    merkleRoot:
-                      type: string
-                    merkleLeaves:
-                      type: array
-                      items:
-                        type: string
-                    secretHash:
-                      type: string
-        signature:
-          type: string
-          pattern: "^0x[a-fA-F0-9]{130}$"
-          description: Order signature
-
     SecretRevealRequest:
       type: object
       required:
@@ -846,7 +733,7 @@ components:
       properties:
         orderHash:
           type: string
-          pattern: "^0x[a-fA-F0-9]{64}$"
+          pattern: "^(0x)?[a-fA-F0-9]{40,70}$"
           description: Hash of the order
         secret:
           type: string
@@ -858,142 +745,6 @@ components:
           type: string
           pattern: "^0x[a-fA-F0-9]{130}$"
           description: Requester's signature
-
-    OrderStatus:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        phase:
-          type: string
-          enum:
-            [
-              submitted,
-              claimed,
-              src_escrow_deployed,
-              dst_escrow_deployed,
-              waiting-for-secret,
-              completed,
-            ]
-        sourceEscrow:
-          $ref: "#/components/schemas/EscrowDetails"
-        destinationEscrow:
-          $ref: "#/components/schemas/EscrowDetails"
-
-        secret:
-          $ref: "#/components/schemas/SecretManagement"
-        timelock:
-          $ref: "#/components/schemas/TimelockPhase"
-        isCompleted:
-          type: boolean
-        error:
-          type: string
-        events:
-          type: array
-          items:
-            $ref: "#/components/schemas/OrderEvent"
-
-    EscrowDetails:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        chain:
-          type: string
-        contractAddress:
-          type: string
-        secretHash:
-          type: string
-        amount:
-          type: string
-        timeout:
-          type: integer
-        creator:
-          type: string
-        designated:
-          type: string
-        isCreated:
-          type: boolean
-        isWithdrawn:
-          type: boolean
-        isCancelled:
-          type: boolean
-        createdAt:
-          type: integer
-        withdrawnAt:
-          type: integer
-        cancelledAt:
-          type: integer
-        transactionHash:
-          type: string
-
-    SecretManagement:
-      type: object
-      properties:
-        orderHash:
-          type: string
-        secret:
-          type: string
-        secretHash:
-          type: string
-        isRevealed:
-          type: boolean
-        revealedAt:
-          type: integer
-        revealedBy:
-          type: string
-        merkleTree:
-          type: object
-          description: Merkle tree structure for secret management (if applicable)
-
-    TimelockPhase:
-      type: object
-      properties:
-        phase:
-          type: string
-          enum:
-            [
-              submitted,
-              claimed,
-              src_escrow_deployed,
-              dst_escrow_deployed,
-              waiting-for-secret,
-              completed,
-            ]
-        orderHash:
-          type: string
-        startTime:
-          type: integer
-        endTime:
-          type: integer
-        isActive:
-          type: boolean
-        nextPhase:
-          type: string
-
-    OrderEvent:
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-            [
-              order_created,
-              order_updates,
-              phase_transition,
-              secret_revealed,
-              order_completed,
-              order_cancelled,
-              error,
-            ]
-        timestamp:
-          type: integer
-        data:
-          type: object
-        transactionHash:
-          type: string
-        blockNumber:
-          type: integer
 
   responses:
     BadRequest:

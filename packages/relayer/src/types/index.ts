@@ -199,8 +199,6 @@ export interface SubmitSignedOrderRequest {
 export interface ClaimOrderRequest {
   orderHash: string;
   resolverAddress: string;
-  estimatedGas: number;
-  signature: string;
 }
 
 export interface EscrowDeploymentConfirmation {

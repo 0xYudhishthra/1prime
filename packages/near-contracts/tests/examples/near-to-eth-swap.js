@@ -5,6 +5,10 @@
 
 const { execSync } = require("child_process");
 const crypto = require("crypto");
+const { JsonRpcProvider } = require("@near-js/providers");
+const { Account } = require("@near-js/accounts");
+const { KeyPairSigner } = require("@near-js/signers");
+require("dotenv").config();
 
 // Testnet configuration - using deployed contracts
 const config = {
@@ -48,6 +52,31 @@ function logSection(title) {
   log("─".repeat(title.length), "blue");
 }
 
+async function setupNearConnection() {
+  // Create provider
+  const provider = new JsonRpcProvider({ url: config.nodeUrl });
+
+  // Get credentials from environment variables
+  const privateKey = process.env.PRIVATE_KEY;
+  const accountId = process.env.ACCOUNT_ID || config.accounts.owner;
+
+  if (!privateKey) {
+    throw new Error("PRIVATE_KEY environment variable is required");
+  }
+
+  try {
+    // Create signer from private key string
+    const signer = KeyPairSigner.fromSecretKey(privateKey); // ed25519:xxxxx...
+
+    // Create account instance
+    const account = new Account(accountId, provider, signer);
+
+    return { provider, account };
+  } catch (error) {
+    throw new Error(`Failed to setup NEAR connection: ${error.message}`);
+  }
+}
+
 async function runNearCommand(command) {
   try {
     const output = execSync(command, {
@@ -68,15 +97,13 @@ async function main() {
   log("🌉 NEAR → ETH Cross-Chain Swap Example (Testnet)", "bold");
   log("═══════════════════════════════════════════════", "blue");
 
-  // Check if testnet is accessible
+  // Setup NEAR connection
+  let nearConnection;
   try {
-    const response = await fetch("https://rpc.testnet.near.org/status");
-    if (!response.ok) {
-      throw new Error("Testnet not responding");
-    }
-    log("✅ NEAR testnet is accessible", "green");
+    nearConnection = await setupNearConnection();
+    log("✅ NEAR connection established", "green");
   } catch (error) {
-    log("❌ Cannot connect to NEAR testnet:", "red");
+    log("❌ Cannot connect to NEAR:", "red");
     log(`   Error: ${error.message}`, "yellow");
     process.exit(1);
   }
@@ -96,9 +123,9 @@ async function main() {
   logSection("Step 2: Create Source Escrow on NEAR");
 
   const currentTime = Math.floor(Date.now() / 1000); // Convert to seconds
-  const orderSalt = crypto.randomBytes(32).toString("hex");
-  const makingAmount = "1000000000000000000000"; // 1 NEAR (smaller test amount)
-  const takingAmount = "1000000"; // 1 USDC (6 decimals, smaller test amount)
+  const orderSalt = "example-salt";
+  const makingAmount = "1000000000000000000"; // 1 NEAR (smaller test amount)
+  const takingAmount = "1000000000000000000"; // 1 USDC (6 decimals, smaller test amount)
   const safetyDeposit = "100000000000000000000"; // 0.1 NEAR (smaller test amount)
 
   // Prepare order according to the ABI - FIELD ORDER MATTERS!
@@ -121,18 +148,19 @@ async function main() {
   extension.dst_safety_deposit = safetyDeposit; // 5th - 0.1 NEAR equivalent on ETH
   extension.timelocks = timelocks; // 6th - Timelocks
 
+  // Create Order object with EXACT field order matching Rust struct
   const order = {};
-  order.extension = extension; // 1st - OrderExtension (per ABI)
-  order.maker = config.accounts.maker; // 2nd
-  order.maker_asset = "wrap.testnet"; // 3rd - Wrapped NEAR account on testnet
-  order.making_amount = makingAmount; // 4th
-  order.salt = orderSalt; // 5th
-  order.taker = config.accounts.resolver; // 6th
+  order.maker = config.accounts.maker; // 1st - AccountId
+  order.taker = config.accounts.resolver; // 2nd - AccountId
+  order.making_amount = makingAmount; // 3rd - U128
+  order.taking_amount = takingAmount; // 4th - U128
+  order.maker_asset = "near"; // 5th - AccountId
   order.taker_asset =
-    "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"; // 7th - Valid NEAR implicit account ID
-  order.taking_amount = takingAmount; // 8th
+    "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"; // 6th - String
+  order.salt = orderSalt; // 7th - String
+  order.extension = extension; // 8th - OrderExtension
 
-  const orderSignature = "mock_signature_" + orderSalt.slice(0, 16);
+  const orderSignature = orderSalt.slice(0, 32).toString();
 
   // Create source escrow via resolver
   log("🔄 Creating source escrow...", "yellow");
@@ -160,43 +188,51 @@ async function main() {
     );
   }
 
-  // Convert to base64 to avoid JSON parsing issues
-  const argsBase64 = Buffer.from(JSON.stringify(deployArgs)).toString("base64");
+  // Call deploy_src using NEAR API with properly ordered arguments
+  try {
+    log("🔄 Calling deploy_src via NEAR API...", "yellow");
 
-  const createSrcResult = await runNearCommand(
-    `near call ${config.accounts.resolver}  deploy_src '${JSON.stringify(
-      deployArgs
-    )}' --accountId ${
-      config.accounts.owner
-    } --gas 300000000000000 --amount 1.1 --networkId ${config.networkId}`
-  );
+    // Use the clean account.callFunction method
+    console.log(deployArgs);
+    const result = await nearConnection.account.callFunction({
+      contractId: config.accounts.resolver,
+      methodName: "deploy_src",
+      args: deployArgs, // Direct object with correct field ordering
+      gas: "300000000000000",
+      attachedDeposit: "1100000000000000000000000",
+    });
 
-  if (createSrcResult.success) {
     log("✅ Source escrow created successfully!", "green");
-    log(
-      `   Transaction: ${
-        createSrcResult.output.match(/Transaction hash: (\w+)/)?.[1] || "N/A"
-      }`,
-      "blue"
-    );
-  } else {
+    log(`   Transaction: ${result.transaction?.hash || "N/A"}`, "blue");
+  } catch (error) {
     log("❌ Failed to create source escrow:", "red");
-    log(`   Error: ${createSrcResult.error}`, "red");
+    log(`   Error: ${error.message}`, "red");
+
+    // If there's more detail in the error, log it
+    if (error.kind?.ExecutionError) {
+      log(`   Execution Error: ${error.kind.ExecutionError}`, "red");
+    }
     process.exit(1);
   }
 
   logSection("Step 3: Check Escrow Address");
 
-  // Get escrow address from factory
-  const getAddressResult = await runNearCommand(
-    `near view ${config.accounts.factory} get_escrow_address '{"order_hash": "${orderSalt}"}' --networkId ${config.networkId}`
-  );
+  // Get escrow address from factory using NEAR API
+  try {
+    const escrowAddressResult = await nearConnection.provider.callFunction(
+      config.accounts.factory,
+      "get_escrow_address",
+      { order_hash: orderSalt }
+    );
 
-  if (getAddressResult.success) {
-    const escrowAddress = getAddressResult.output.match(/"([^"]+)"/)?.[1];
+    // The result comes as bytes array, decode it
+    const escrowAddress = JSON.parse(
+      Buffer.from(escrowAddressResult.result).toString()
+    );
     log(`✅ Source escrow deployed at: ${escrowAddress}`, "green");
-  } else {
+  } catch (error) {
     log("⚠️  Could not retrieve escrow address", "yellow");
+    log(`   Error: ${error.message}`, "yellow");
   }
 
   logSection("Step 4: Simulate Cross-Chain Flow");

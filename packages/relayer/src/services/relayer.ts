@@ -4,6 +4,7 @@ import {
   FusionOrder,
   FusionOrderExtended,
   OrderStatus,
+  TimelockPhase,
   SecretRevealRequest,
   RelayerStatus,
   HealthCheckResponse,
@@ -110,6 +111,11 @@ export class RelayerService extends EventEmitter {
     this.webSocketService = webSocketService;
   }
 
+  // Getter for database service (for debugging purposes)
+  get dbService() {
+    return this.databaseService;
+  }
+
   async initialize(): Promise<void> {
     try {
       if (this.isInitialized) {
@@ -125,6 +131,9 @@ export class RelayerService extends EventEmitter {
 
       // Initialize timelock manager
       await this.timelockManager.initialize();
+
+      // Restore active orders from database
+      await this.restoreStateFromDatabase();
 
       // Start health checks
       this.startHealthChecks();
@@ -464,9 +473,9 @@ export class RelayerService extends EventEmitter {
       // Extract timelock values from SDK order
       detailedTimeLocks: this.extractTimeLocks(fusionExtension),
       // Simplified auction details - hardcoded price, no dutch auction
-      enhancedAuctionDetails: {
-        points: [], // Empty - no price curve
-      },
+      // enhancedAuctionDetails: {
+      //   points: [], // Empty - no price curve
+      // },
 
       // Order state management
       phase: "submitted",
@@ -670,18 +679,26 @@ export class RelayerService extends EventEmitter {
         throw new Error("Resolver not authorized for this order");
       }
 
-      // Update order phase based on new state
-      if (newState === "waiting-for-secret") {
-        await this.orderManager.updateOrderPhase(
-          orderHash,
-          "waiting-for-secret"
-        );
-      } else if (newState === "completed") {
-        await this.orderManager.completeOrder(orderHash, "resolver-completed");
-      }
+      // Update order phase in database
+      await this.databaseService.updateOrderPhase(orderHash, newState);
 
-      // Update database
+      // Update order status in database (for backward compatibility)
       await this.databaseService.updateOrderStatus(orderHash, newState as any);
+
+      // Update order state in OrderManager if methods are available
+      if (newState === "completed") {
+        try {
+          await this.orderManager.completeOrder(
+            orderHash,
+            "resolver-completed"
+          );
+        } catch (error) {
+          this.logger.warn("OrderManager.completeOrder not implemented", {
+            orderHash,
+            error: (error as Error).message,
+          });
+        }
+      }
 
       // Broadcast state change via WebSocket
       if (this.webSocketService) {
@@ -718,26 +735,42 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
-      // Verify order exists and is in correct state
-      const order = this.orderManager.getOrder(claimRequest.orderHash);
-      if (!order) {
+      // Verify order exists and get current state from database (not memory)
+      const orderRecord = await this.databaseService.getOrder(
+        claimRequest.orderHash
+      );
+      if (!orderRecord) {
         throw new Error("Order not found");
       }
 
-      // Check if order is in submitted state (ready for claiming)
-      const extendedOrder = order as any; // Type assertion for extended order properties
-      if (extendedOrder.phase !== "submitted") {
+      // Check if order is in correct state for claiming (prevent double claiming)
+      const extendedRecord = orderRecord as FusionOrderExtended;
+      const currentPhase =
+        extendedRecord.phase ||
+        this.mapStatusToPhase(orderRecord.status as unknown as string);
+
+      if (currentPhase !== "submitted") {
         throw new Error(
-          `Order cannot be claimed in current state: ${extendedOrder.phase}`
+          `Order cannot be claimed in current state: ${currentPhase}. Only orders in 'submitted' state can be claimed.`
         );
       }
 
-      // Skip resolver registration verification - operating with single resolver
+      // Check if order already has an assigned resolver (additional protection)
+      if (
+        extendedRecord.assignedResolver &&
+        extendedRecord.assignedResolver !== claimRequest.resolverAddress
+      ) {
+        throw new Error(
+          `Order already claimed by resolver: ${extendedRecord.assignedResolver}`
+        );
+      }
 
-      // Update order state to claimed
-      // TODO: Implement proper order state management in DatabaseService
-      // TODO: Implement updateOrderPhase in OrderManager
-      // this.orderManager.updateOrderPhase(claimRequest.orderHash, "claimed");
+      // Atomically claim the order (prevents race conditions and double claiming)
+      await this.databaseService.claimOrderAtomic(
+        claimRequest.orderHash,
+        claimRequest.resolverAddress,
+        currentPhase
+      );
 
       // TODO: Store resolver assignment (in production, this should be in the database)
       // this.orderManager.assignResolver(claimRequest.orderHash, claimRequest.resolverAddress);
@@ -757,7 +790,6 @@ export class RelayerService extends EventEmitter {
       this.logger.info("Order claimed by resolver", {
         orderHash: claimRequest.orderHash,
         resolverAddress: claimRequest.resolverAddress,
-        estimatedGas: claimRequest.estimatedGas,
       });
 
       return true;
@@ -808,14 +840,25 @@ export class RelayerService extends EventEmitter {
         updateData.dstEscrowBlockNumber = confirmation.blockNumber;
       }
 
-      // Include phase update in the data
+      // Update phase based on escrow type
+      let newPhase: string;
       if (confirmation.escrowType === "src") {
-        updateData.phase = "src_escrow_deployed";
+        newPhase = "src_escrow_deployed";
       } else if (confirmation.escrowType === "dst") {
-        // For now, assume destination deployment means both are done
-        updateData.phase = "completed";
+        newPhase = "dst_escrow_deployed";
+      } else {
+        throw new Error("Invalid escrow type");
+      }
 
-        // After both escrows are deployed and validated, move to waiting-for-secret
+      // Update phase in database
+      await this.databaseService.updateOrderPhase(
+        confirmation.orderHash,
+        newPhase
+      );
+      updateData.phase = newPhase;
+
+      // If destination escrow is deployed, automatically move to waiting-for-secret after a short delay
+      if (confirmation.escrowType === "dst") {
         setTimeout(async () => {
           try {
             await this.updateOrderState(
@@ -830,8 +873,6 @@ export class RelayerService extends EventEmitter {
             });
           }
         }, 1000); // Small delay for validation
-      } else {
-        throw new Error("Invalid escrow type");
       }
 
       // TODO: Implement proper escrow tracking in DatabaseService
@@ -1718,16 +1759,68 @@ export class RelayerService extends EventEmitter {
     try {
       this.validateInitialized();
 
-      const orderStatus = this.orderManager.getOrderStatus(orderHash);
-      if (!orderStatus) {
+      // Get order from database instead of memory-only OrderManager
+      const orderRecord = await this.databaseService.getOrder(orderHash);
+      if (!orderRecord) {
         return null;
       }
+
+      // Convert database record to OrderStatus format
+      const extendedRecord = orderRecord as FusionOrderExtended;
+      const orderStatus: OrderStatus = {
+        orderHash: orderRecord.orderHash,
+        phase: (extendedRecord.phase ||
+          this.mapStatusToPhase(
+            orderRecord.status as unknown as string
+          )) as TimelockPhase["phase"],
+        sourceEscrow: extendedRecord.srcEscrowAddress
+          ? {
+              orderHash: orderRecord.orderHash,
+              chain: orderRecord.sourceChain,
+              contractAddress: extendedRecord.srcEscrowAddress,
+              secretHash: orderRecord.secretHash,
+              amount: orderRecord.sourceAmount,
+              timeout: orderRecord.timeout,
+              creator: orderRecord.maker,
+              designated: extendedRecord.assignedResolver || "",
+              isCreated: true,
+              isWithdrawn: false,
+              isCancelled: false,
+              transactionHash: extendedRecord.srcEscrowTxHash,
+            }
+          : undefined,
+        destinationEscrow: extendedRecord.dstEscrowAddress
+          ? {
+              orderHash: orderRecord.orderHash,
+              chain: orderRecord.destinationChain,
+              contractAddress: extendedRecord.dstEscrowAddress,
+              secretHash: orderRecord.secretHash,
+              amount: orderRecord.destinationAmount,
+              timeout: orderRecord.timeout,
+              creator: orderRecord.maker,
+              designated: extendedRecord.assignedResolver || "",
+              isCreated: true,
+              isWithdrawn: false,
+              isCancelled: false,
+              transactionHash: extendedRecord.dstEscrowTxHash,
+            }
+          : undefined,
+        secret: undefined, // TODO: Add secret management
+        isCompleted: (orderRecord.status as unknown as string) === "completed",
+        events: orderRecord.events || [],
+      };
 
       // Enrich with current timelock information
       const timelock = this.timelockManager.getTimelockPhase(orderHash);
       if (timelock) {
         orderStatus.timelock = timelock;
       }
+
+      this.logger.debug("Retrieved order status from database", {
+        orderHash,
+        phase: orderStatus.phase,
+        status: orderRecord.status,
+      });
 
       return orderStatus;
     } catch (error) {
@@ -1739,15 +1832,176 @@ export class RelayerService extends EventEmitter {
     }
   }
 
+  /**
+   * Map legacy status to new phase format for backwards compatibility
+   */
+  private mapStatusToPhase(status: string): string {
+    const statusToPhaseMap: Record<string, string> = {
+      pending: "submitted",
+      auction_active: "claimed",
+      bid_accepted: "claimed",
+      processing: "src_escrow_deployed",
+      completed: "completed",
+      cancelled: "cancelled",
+    };
+
+    return statusToPhaseMap[status] || "submitted";
+  }
+
   async getActiveOrders(): Promise<FusionOrder[]> {
     try {
       this.validateInitialized();
-      return this.orderManager.getActiveOrders();
+
+      // Get active orders from database instead of memory-only OrderManager
+      const activeOrderRecords = await this.databaseService.getActiveOrders();
+
+      // Convert database records to FusionOrder format
+      const fusionOrders: FusionOrder[] = activeOrderRecords.map(record => ({
+        orderHash: record.orderHash,
+        maker: record.maker,
+        sourceChain: record.sourceChain,
+        destinationChain: record.destinationChain,
+        sourceToken: record.sourceToken,
+        destinationToken: record.destinationToken,
+        sourceAmount: record.sourceAmount,
+        destinationAmount: record.destinationAmount,
+        secretHash: record.secretHash,
+        timeout: record.timeout,
+        initialRateBump: record.initialRateBump,
+        signature: record.signature,
+        nonce: record.nonce,
+        createdAt: record.createdAt,
+      }));
+
+      this.logger.debug("Retrieved active orders from database", {
+        count: fusionOrders.length,
+      });
+
+      return fusionOrders;
     } catch (error) {
       this.logger.error("Failed to get active orders", {
         error: (error as Error).message,
       });
       throw error;
+    }
+  }
+
+  /**
+   * Restore active orders and state from database on startup
+   * This prevents progress loss when the server restarts
+   */
+  private async restoreStateFromDatabase(): Promise<void> {
+    try {
+      this.logger.info("Restoring orders and state from database...");
+
+      // Get all orders that are not completed or cancelled
+      const activeOrderStates = [
+        "submitted",
+        "claimed",
+        "src_escrow_deployed",
+        "dst_escrow_deployed",
+        "waiting-for-secret",
+      ];
+
+      // Query database for active orders
+      const activeOrders =
+        await this.databaseService.getOrdersByPhases(activeOrderStates);
+
+      this.logger.info("Found active orders to restore", {
+        count: activeOrders.length,
+        activeOrderStates,
+      });
+
+      let restoredCount = 0;
+      let errorCount = 0;
+
+      for (const order of activeOrders) {
+        try {
+          // Restore order to OrderManager (convert database record to FusionOrder)
+          const fusionOrder: FusionOrder = {
+            orderHash: order.orderHash,
+            maker: order.maker,
+            sourceChain: order.sourceChain,
+            destinationChain: order.destinationChain,
+            sourceToken: order.sourceToken,
+            destinationToken: order.destinationToken,
+            sourceAmount: order.sourceAmount,
+            destinationAmount: order.destinationAmount,
+            secretHash: order.secretHash,
+            timeout: order.timeout,
+            initialRateBump: order.initialRateBump,
+            signature: order.signature,
+            nonce: order.nonce,
+            createdAt: order.createdAt,
+          };
+
+          // Add the order to OrderManager (this will likely need a restoreOrder method)
+          // For now, we'll use the existing methods
+          // TODO: Implement restoreOrder method in OrderManager for better state handling
+
+          // Resume timelock monitoring if needed
+          if (
+            order.phase &&
+            order.phase !== "completed" &&
+            order.phase !== "cancelled"
+          ) {
+            try {
+              await this.timelockManager.startMonitoring(order.orderHash);
+              this.logger.debug("Resumed timelock monitoring", {
+                orderHash: order.orderHash,
+                phase: order.phase,
+              });
+            } catch (timelockError) {
+              this.logger.warn("Failed to resume timelock monitoring", {
+                orderHash: order.orderHash,
+                phase: order.phase,
+                error: (timelockError as Error).message,
+              });
+            }
+          }
+
+          // TODO: Resume escrow monitoring if escrows are deployed
+          // This would require additional fields in the database to store escrow addresses
+          // if (order.srcEscrowAddress || order.dstEscrowAddress) {
+          //   await this.escrowVerifier.resumeMonitoring(order.orderHash, {
+          //     srcEscrowAddress: order.srcEscrowAddress,
+          //     dstEscrowAddress: order.dstEscrowAddress,
+          //     srcChain: order.sourceChain,
+          //     dstChain: order.destinationChain
+          //   });
+          // }
+
+          this.logger.debug("Restored order", {
+            orderHash: order.orderHash,
+            phase: order.phase,
+            maker: order.maker,
+            sourceChain: order.sourceChain,
+            destinationChain: order.destinationChain,
+          });
+
+          restoredCount++;
+        } catch (orderError) {
+          this.logger.error("Failed to restore individual order", {
+            orderHash: order.orderHash,
+            phase: order.phase,
+            error: (orderError as Error).message,
+          });
+          errorCount++;
+        }
+      }
+
+      this.logger.info("State restoration completed", {
+        totalFound: activeOrders.length,
+        restoredCount,
+        errorCount,
+        activeOrderStates,
+      });
+    } catch (error) {
+      this.logger.error("Failed to restore state from database", {
+        error: (error as Error).message,
+      });
+      // Don't throw - allow service to start even if restoration fails
+      // This ensures the service remains available for new orders
     }
   }
 
