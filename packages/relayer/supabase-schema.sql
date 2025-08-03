@@ -28,6 +28,8 @@ CREATE TABLE orders (
   "nonce" TEXT NOT NULL,
   "createdAt" BIGINT NOT NULL,
   "status" TEXT NOT NULL CHECK (status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created', 'completed', 'cancelled', 'expired')),
+  "phase" TEXT DEFAULT 'submitted' CHECK (phase IN ('submitted', 'claimed', 'src_escrow_deployed', 'dst_escrow_deployed', 'waiting-for-secret', 'completed', 'cancelled')),
+  "assignedResolver" TEXT, -- Address of the resolver assigned to process this order
   "updatedAt" BIGINT NOT NULL,
   "auctionState" JSONB,
   "events" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -40,6 +42,14 @@ CREATE TABLE orders (
   "enhancedAuctionDetails" JSONB, -- Enhanced auction with price curve points
   "sourceEscrowDeployedAt" BIGINT, -- When source escrow deployed (E1) - critical for timelock calculation
   "destinationEscrowDeployedAt" BIGINT, -- When destination escrow deployed (E2) - critical for timelock calculation
+  
+  -- Escrow contract information
+  "srcEscrowAddress" TEXT, -- Source chain escrow contract address
+  "dstEscrowAddress" TEXT, -- Destination chain escrow contract address
+  "srcEscrowTxHash" TEXT, -- Source escrow deployment transaction hash
+  "dstEscrowTxHash" TEXT, -- Destination escrow deployment transaction hash
+  "srcEscrowBlockNumber" BIGINT, -- Source escrow deployment block number
+  "dstEscrowBlockNumber" BIGINT, -- Destination escrow deployment block number
   
   -- NEAR address compatibility fields for cross-chain support
   "originalAddresses" JSONB, -- Original addresses (for NEAR compatibility): {userAddress, fromToken, toToken, escrowFactory}
@@ -68,19 +78,12 @@ CREATE TABLE prepared_orders (
   -- Note: No foreign key to orders table since prepared_orders are created BEFORE orders
 );
 
--- Resolvers table for basic resolver information
-CREATE TABLE resolvers (
-  "address" TEXT PRIMARY KEY,
-  "isKyc" BOOLEAN NOT NULL DEFAULT false,
-  "reputation" INTEGER NOT NULL DEFAULT 0 CHECK (reputation >= 0 AND reputation <= 100),
-  "completedOrders" INTEGER NOT NULL DEFAULT 0,
-  "lastActivity" BIGINT NOT NULL,
-  "createdAt" BIGINT NOT NULL DEFAULT EXTRACT(epoch FROM now()) * 1000,
-  "updatedAt" BIGINT NOT NULL DEFAULT EXTRACT(epoch FROM now()) * 1000
-);
+
 
 -- Create indexes for efficient querying
 CREATE INDEX idx_orders_status ON orders("status");
+CREATE INDEX idx_orders_phase ON orders("phase");
+CREATE INDEX idx_orders_assigned_resolver ON orders("assignedResolver");
 CREATE INDEX idx_orders_source_chain ON orders("sourceChain");
 CREATE INDEX idx_orders_destination_chain ON orders("destinationChain");
 CREATE INDEX idx_orders_created_at ON orders("createdAt");
@@ -93,19 +96,20 @@ CREATE INDEX idx_orders_destination_escrow_deployed ON orders("destinationEscrow
 CREATE INDEX idx_orders_src_safety_deposit ON orders("srcSafetyDeposit");
 CREATE INDEX idx_orders_dst_safety_deposit ON orders("dstSafetyDeposit");
 
+-- Indexes for escrow contract information
+CREATE INDEX idx_orders_src_escrow_address ON orders("srcEscrowAddress");
+CREATE INDEX idx_orders_dst_escrow_address ON orders("dstEscrowAddress");
+CREATE INDEX idx_orders_src_escrow_tx ON orders("srcEscrowTxHash");
+CREATE INDEX idx_orders_dst_escrow_tx ON orders("dstEscrowTxHash");
+
 -- Indexes for prepared_orders table
 CREATE INDEX idx_prepared_orders_status ON prepared_orders("status");
 CREATE INDEX idx_prepared_orders_created_at ON prepared_orders("createdAt");
 CREATE INDEX idx_prepared_orders_expires_at ON prepared_orders("expiresAt");
 
-CREATE INDEX idx_resolvers_kyc ON resolvers("isKyc");
-CREATE INDEX idx_resolvers_reputation ON resolvers("reputation");
-CREATE INDEX idx_resolvers_last_activity ON resolvers("lastActivity");
-
 -- RLS (Row Level Security) policies for secure access
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE prepared_orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE resolvers ENABLE ROW LEVEL SECURITY;
 
 -- Policy to allow read access to orders (public information)
 CREATE POLICY "Orders are viewable by everyone" ON orders
@@ -129,14 +133,6 @@ CREATE POLICY "Prepared orders can be created by authenticated users" ON prepare
 CREATE POLICY "Prepared orders can be updated by authenticated users" ON prepared_orders
   FOR UPDATE USING (auth.role() = 'authenticated' OR auth.role() = 'anon');
 
--- Policy to allow read access to resolvers (public KYC information)
-CREATE POLICY "Resolvers are viewable by everyone" ON resolvers
-  FOR SELECT USING (true);
-
--- Policy to allow resolver registration and updates
-CREATE POLICY "Resolvers can be created and updated" ON resolvers
-  FOR ALL USING (auth.role() = 'authenticated' OR auth.role() = 'anon');
-
 -- Create functions for automatic timestamp updates
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -157,16 +153,7 @@ CREATE TRIGGER update_prepared_orders_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_resolvers_updated_at
-  BEFORE UPDATE ON resolvers
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
 -- Insert some sample data (optional, for testing)
--- Sample resolvers
--- INSERT INTO resolvers ("address", "isKyc", "reputation", "lastActivity") VALUES
--- ('0x742d35Cc6635C0532925a3b8D4A8f4c3c8a54a0b', true, 95, EXTRACT(epoch FROM now()) * 1000),
--- ('0x8ba1f109551bD432803012645Hac136c69d80Ba9', true, 98, EXTRACT(epoch FROM now()) * 1000);
 
 -- Sample order
 -- INSERT INTO orders (
@@ -188,23 +175,7 @@ CREATE TRIGGER update_resolvers_updated_at
 CREATE VIEW active_orders AS
 SELECT * FROM orders 
 WHERE status IN ('pending', 'auction_active', 'bid_accepted', 'escrow_created')
-ORDER BY "createdAt" DESC;
-
--- View for active prepared orders (for cleanup and monitoring)
-CREATE VIEW active_prepared_orders AS
-SELECT 
-  "orderHash",
-  "status",
-  "createdAt",
-  "updatedAt",
-  "expiresAt",
-  CASE 
-    WHEN "expiresAt" IS NOT NULL AND "expiresAt" < EXTRACT(epoch FROM now()) * 1000 
-    THEN true 
-    ELSE false 
-  END as is_expired
-FROM prepared_orders 
-WHERE status = 'prepared'
+   OR phase IN ('submitted', 'claimed', 'src_escrow_deployed', 'dst_escrow_deployed', 'waiting-for-secret')
 ORDER BY "createdAt" DESC;
 
 -- View for completed orders statistics
@@ -219,22 +190,3 @@ SELECT
   AVG(CASE WHEN status = 'completed' THEN ("updatedAt" - "createdAt") END) as avg_completion_time_ms
 FROM orders 
 GROUP BY "sourceChain", "destinationChain";
-
--- View for resolver performance metrics
-CREATE VIEW resolver_stats AS
-SELECT 
-  r."address",
-  r."reputation",
-  r."completedOrders",
-  COUNT(o."orderHash") as total_bids,
-  COUNT(CASE WHEN o.status = 'completed' THEN 1 END) as successful_orders,
-  CASE 
-    WHEN COUNT(o."orderHash") > 0 THEN 
-      (COUNT(CASE WHEN o.status = 'completed' THEN 1 END)::float / COUNT(o."orderHash")::float) * 100
-    ELSE 0 
-  END as success_rate
-FROM resolvers r
-LEFT JOIN orders o ON o."auctionState"->>'winningResolver' = r."address"
-WHERE r."isKyc" = true
-GROUP BY r."address", r."reputation", r."completedOrders"
-ORDER BY success_rate DESC, r."reputation" DESC; 
